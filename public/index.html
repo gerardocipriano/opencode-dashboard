@@ -102,13 +102,26 @@ header .right { display: flex; align-items: center; gap: 10px; margin-left: auto
   border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px;
   background: rgba(255,255,255,.02);
 }
-.sse-dot {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--gray); flex-shrink: 0;
-  transition: background .3s;
+.sse-signal { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; flex-shrink: 0; }
+.sse-signal i {
+  width: 2px; background: var(--border); border-radius: 1px;
+  transition: background .3s, box-shadow .3s;
 }
-.sse-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
-.sse-dot.disconnected { background: var(--red); }
-.sse-dot.connecting { background: var(--yellow); animation: pulse 1s ease-in-out infinite; }
+.sse-signal i:nth-child(1) { height: 3px; }
+.sse-signal i:nth-child(2) { height: 5px; }
+.sse-signal i:nth-child(3) { height: 7px; }
+.sse-signal i:nth-child(4) { height: 10px; }
+.sse-signal.connected i { background: var(--green); box-shadow: 0 0 4px rgba(46,230,107,.6); }
+.sse-signal.disconnected i { background: var(--border); }
+.sse-signal.disconnected i:nth-child(1) { background: var(--red); box-shadow: 0 0 4px rgba(255,92,87,.6); }
+.sse-signal.connecting i { background: var(--yellow); }
+@media (prefers-reduced-motion: no-preference) {
+  .sse-signal.connecting i { animation: sigScan 1s ease-in-out infinite; }
+  .sse-signal.connecting i:nth-child(2) { animation-delay: .15s; }
+  .sse-signal.connecting i:nth-child(3) { animation-delay: .3s; }
+  .sse-signal.connecting i:nth-child(4) { animation-delay: .45s; }
+}
+@keyframes sigScan { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -496,7 +509,7 @@ header .right { display: flex; align-items: center; gap: 10px; margin-left: auto
     <span class="stat cost">24h <strong class="num" id="hCost">$0</strong></span>
   </div>
   <div class="right">
-    <span class="sse-indicator"><span class="sse-dot connecting" id="sseDot"></span><span id="sseLabel">connecting</span></span>
+    <span class="sse-indicator"><span class="sse-signal connecting" id="sseDot" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="sseLabel">connecting</span></span>
   </div>
 </header>
 
@@ -620,8 +633,8 @@ function connectSSE() {
 function setSSEStatus(s) {
   const dot = $('#sseDot');
   const label = $('#sseLabel');
-  dot.className = 'sse-dot ' + s;
-  label.textContent = s;
+  dot.className = 'sse-signal ' + s;
+  label.textContent = s === 'connected' ? 'uplink' : s === 'disconnected' ? 'no signal' : 'syncing';
 }
 
 function startPolling() {
