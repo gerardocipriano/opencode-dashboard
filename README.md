@@ -57,7 +57,7 @@ PORT=8080 node server.js
 
 ## Design
 
-The UI is a single self-contained HTML file — dark GitHub-inspired palette, no frameworks, no external fonts, no CDN. It follows the [Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines): visible focus rings, keyboard-accessible interactions, `prefers-reduced-motion` support, tabular numerals for metrics, WCAG AA contrast, and live regions for streaming updates.
+The UI is a single self-contained HTML file with a phosphor "mission control" aesthetic — Saira + IBM Plex Mono, glowing status indicators, instrument-style readouts — no frameworks, no build step. It follows the [Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines): visible focus rings, keyboard-accessible interactions, `prefers-reduced-motion` support, tabular numerals for metrics, WCAG AA contrast, and live regions for streaming updates.
 
 ## License
 
