@@ -1,1097 +1,354 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="it">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0d1117">
-<title>opencode mission control</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#060B08">
+<title>opencode mc</title>
+<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23060B08'/%3E%3Ccircle cx='8' cy='8' r='4' fill='%233E7D5A'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
-<style>
-:root {
-  --bg: #07090d;
-  --surface: #0c1016;
-  --surface2: #121925;
-  --surface3: #1a2433;
-  --border: #1e2a3a;
-  --text: #dbe7f3;
-  --text2: #93a4b8;
-  --text3: #7d8da0;
-  --green: #2ee66b;
-  --green-dim: rgba(46,230,107,.12);
-  --red: #ff5c57;
-  --red-dim: rgba(255,92,87,.14);
-  --yellow: #ffb454;
-  --blue: #4cc2ff;
-  --blue-dim: rgba(76,194,255,.12);
-  --purple: #c792ea;
-  --orange: #ff8f40;
-  --gray: #8b98a8;
-  --font-ui: 'Saira', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'SF Mono', monospace;
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html { color-scheme: dark; }
-html, body { height: 100%; overflow: hidden; }
-button { touch-action: manipulation; }
-:is(button, input, [role="button"], .session-card, .tab-btn):focus-visible {
-  outline: 2px solid var(--blue); outline-offset: 1px;
-}
-.sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
-}
-body {
-  font-family: var(--font-ui);
-  background:
-    radial-gradient(1100px 500px at 75% -10%, rgba(76,194,255,.07), transparent 60%),
-    radial-gradient(800px 460px at -5% 105%, rgba(46,230,107,.05), transparent 60%),
-    var(--bg);
-  color: var(--text); display: flex; flex-direction: column;
-  position: relative;
-}
-body::before {
-  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background:
-    repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 40px),
-    repeating-linear-gradient(90deg, rgba(255,255,255,.014) 0 1px, transparent 1px 40px);
-}
-header, .app-container { position: relative; z-index: 1; }
-code, .mono { font-family: var(--font-mono); }
-
-/* header */
-header {
-  height: 52px; min-height: 52px;
-  background: linear-gradient(180deg, rgba(18,25,37,.92), rgba(12,16,22,.92));
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border); display: flex; align-items: center;
-  padding: 0 16px; gap: 16px;
-  box-shadow: 0 1px 0 rgba(76,194,255,.08), 0 8px 24px rgba(0,0,0,.35);
-}
-header h1 {
-  font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px;
-  white-space: nowrap; text-transform: uppercase; letter-spacing: .12em;
-}
-header h1 .hl { color: var(--green); text-shadow: 0 0 12px rgba(46,230,107,.7); }
-header h1 .sub {
-  color: var(--text3); font-weight: 500; font-size: 10px; letter-spacing: .22em;
-  border: 1px solid var(--border); border-radius: 3px; padding: 2px 7px;
-  font-family: var(--font-mono); text-transform: uppercase;
-}
-header .stats { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: center; }
-.stat {
-  font-size: 10px; color: var(--text3); white-space: nowrap; font-variant-numeric: tabular-nums;
-  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .1em;
-  display: inline-flex; align-items: baseline; gap: 7px;
-  background: rgba(255,255,255,.02); border: 1px solid var(--border);
-  border-radius: 4px; padding: 4px 10px;
-}
-.stat strong { color: var(--text); font-weight: 600; }
-.stat .num { font-weight: 600; font-size: 13px; }
-.stat .num.working { color: var(--green); }
-.stat .num.active { color: var(--blue); }
-.stat .num.stuck { color: var(--red); }
-.stat .num.idle { color: var(--text3); }
-.stat.cost { font-family: var(--font-mono); }
-.stat.cost .num { color: var(--yellow); }
-header .right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-.sse-indicator {
-  display: flex; align-items: center; gap: 6px; font-size: 9px; color: var(--text3); white-space: nowrap;
-  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .12em;
-  border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px;
-  background: rgba(255,255,255,.02);
-}
-.sse-signal { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; flex-shrink: 0; }
-.sse-signal i {
-  width: 2px; background: var(--border); border-radius: 1px;
-  transition: background .3s, box-shadow .3s;
-}
-.sse-signal i:nth-child(1) { height: 3px; }
-.sse-signal i:nth-child(2) { height: 5px; }
-.sse-signal i:nth-child(3) { height: 7px; }
-.sse-signal i:nth-child(4) { height: 10px; }
-.sse-signal.connected i { background: var(--green); box-shadow: 0 0 4px rgba(46,230,107,.6); }
-.sse-signal.disconnected i { background: var(--border); }
-.sse-signal.disconnected i:nth-child(1) { background: var(--red); box-shadow: 0 0 4px rgba(255,92,87,.6); }
-.sse-signal.connecting i { background: var(--yellow); }
-@media (prefers-reduced-motion: no-preference) {
-  .sse-signal.connecting i { animation: sigScan 1s ease-in-out infinite; }
-  .sse-signal.connecting i:nth-child(2) { animation-delay: .15s; }
-  .sse-signal.connecting i:nth-child(3) { animation-delay: .3s; }
-  .sse-signal.connecting i:nth-child(4) { animation-delay: .45s; }
-}
-@keyframes sigScan { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .4; }
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes shimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: 200px 0; }
-}
-.skeleton-line {
-  height: 12px; margin: 8px 20px; border-radius: 4px;
-  background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%);
-  background-size: 400px 100%;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .skeleton-line { animation: shimmer 1.4s linear infinite; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-  }
-}
-.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; }
-
-/* layout */
-.app-container { display: flex; flex: 1; overflow: hidden; }
-
-/* sidebar */
-#sidebar {
-  width: 380px; min-width: 380px; border-right: 1px solid var(--border);
-  display: flex; flex-direction: column;
-  background: linear-gradient(180deg, rgba(18,25,37,.5), rgba(12,16,22,.5));
-}
-.sidebar-filters {
-  padding: 10px 12px; border-bottom: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;
-}
-.filter-row { display: flex; gap: 4px; }
-#searchInput {
-  flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  padding: 6px 10px; color: var(--text); font-size: 12px;
-  font-family: inherit;
-}
-#searchInput:focus { border-color: var(--blue); }
-#searchInput:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-#searchInput::placeholder { color: var(--text3); }
-.filter-btn {
-  padding: 4px 11px; border: 1px solid var(--border); border-radius: 4px;
-  background: transparent; color: var(--text3); font-size: 10px; cursor: pointer;
-  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .08em;
-  white-space: nowrap;
-  transition: color .15s, border-color .15s, background-color .15s, box-shadow .15s;
-}
-.filter-btn:hover { color: var(--text); border-color: var(--text3); }
-.filter-btn.active {
-  background: var(--blue-dim); color: var(--blue); border-color: var(--blue);
-  box-shadow: 0 0 10px rgba(76,194,255,.25), inset 0 0 8px rgba(76,194,255,.08);
-}
-
-/* session list */
-.session-list {
-  flex: 1; overflow-y: auto; padding: 6px;
-  overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--border) transparent;
-}
-.session-list::-webkit-scrollbar { width: 6px; }
-.session-list::-webkit-scrollbar-track { background: transparent; }
-.session-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-.session-card {
-  padding: 10px 12px 10px 16px; border: 1px solid var(--border); border-radius: 6px;
-  cursor: pointer; margin-bottom: 6px; position: relative;
-  background: rgba(255,255,255,.015);
-  transition: background-color .15s, border-color .15s, transform .15s, box-shadow .15s;
-}
-.session-card::before {
-  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-  border-radius: 6px 0 0 6px; background: transparent; transition: background-color .15s, box-shadow .15s;
-}
-.session-card:hover {
-  background: var(--surface2); border-color: var(--text3); transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0,0,0,.35);
-}
-.session-card.selected {
-  background: linear-gradient(90deg, rgba(76,194,255,.07), transparent 50%), var(--surface2);
-  border-color: var(--blue);
-  box-shadow: 0 0 0 1px rgba(76,194,255,.25), 0 4px 16px rgba(0,0,0,.4);
-}
-.session-card.selected::before { background: var(--blue); box-shadow: 0 0 8px rgba(76,194,255,.6); }
-.session-card .row1 {
-  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
-}
-.session-card .title {
-  font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
-}
-.session-card .prompt-preview {
-  font-size: 11px; color: var(--text2); line-height: 1.4; margin-bottom: 5px;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.session-card .row2 {
-  display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text2);
-  flex-wrap: wrap;
-}
-.session-card .dir {
-  font-family: var(--font-mono); font-size: 10px; color: var(--text3);
-  background: var(--bg); padding: 1px 5px; border-radius: 3px;
-}
-.session-card .agent { color: var(--purple); font-size: 10px; }
-.session-card .model { color: var(--text3); font-size: 10px; }
-.session-card .time { margin-left: auto; font-size: 10px; color: var(--text3); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.session-card .row3 {
-  display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 11px;
-}
-.session-card .last-activity {
-  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2);
-  font-size: 11px; font-family: var(--font-mono);
-}
-.todo-bar {
-  display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text2);
-}
-.todo-track {
-  width: 40px; height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden;
-}
-.todo-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width .3s; }
-.session-card .cost-display { font-family: var(--font-mono); font-size: 10px; color: var(--yellow); margin-left: auto; font-variant-numeric: tabular-nums; }
-
-/* status badges */
-.status-badge {
-  display: inline-flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 600;
-  padding: 2px 8px; border-radius: 3px; white-space: nowrap; flex-shrink: 0;
-  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .1em;
-  border: 1px solid transparent;
-}
-.status-badge .dot { width: 6px; height: 6px; border-radius: 50%; }
-.status-badge.working { background: var(--green-dim); color: var(--green); border-color: rgba(46,230,107,.35); }
-.status-badge.working .dot { background: var(--green); animation: pulse 1s ease-in-out infinite; box-shadow: 0 0 8px var(--green); }
-.status-badge.active { background: var(--green-dim); color: var(--green); border-color: rgba(46,230,107,.25); }
-.status-badge.active .dot { background: var(--green); box-shadow: 0 0 6px rgba(46,230,107,.6); }
-.status-badge.idle { background: rgba(139,152,168,.08); color: var(--gray); border-color: rgba(139,152,168,.2); }
-.status-badge.idle .dot { background: var(--gray); }
-.status-badge.stuck { background: var(--red-dim); color: var(--red); border-color: rgba(255,92,87,.4); }
-.status-badge.stuck .dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
-
-/* main panel */
-#main {
-  flex: 1; overflow-y: auto; padding: 0;
-  overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--border) transparent;
-}
-#main::-webkit-scrollbar { width: 8px; }
-#main::-webkit-scrollbar-track { background: transparent; }
-#main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-.empty-state {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  height: 100%; color: var(--text2); font-size: 13px; gap: 8px; padding: 40px;
-}
-.empty-state .icon { font-size: 28px; opacity: .3; margin-bottom: 8px; }
-
-/* session detail */
-.detail-header {
-  padding: 18px 22px 14px; border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(76,194,255,.045), transparent 70%), var(--surface);
-}
-.detail-header .top {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
-}
-.detail-header h2 { font-size: 16px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-wrap: balance; }
-.detail-header .meta-item .value { font-variant-numeric: tabular-nums; }
-.detail-header .meta {
-  display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text2);
-}
-.detail-header .meta-item { display: flex; align-items: center; gap: 4px; }
-.detail-header .meta-item .label { color: var(--text3); }
-.detail-header .meta-item .value { color: var(--text); font-family: var(--font-mono); font-size: 11px; }
-
-.detail-section {
-  padding: 14px 20px; border-bottom: 1px solid var(--border);
-}
-.detail-section h3 {
-  font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase;
-  letter-spacing: .18em; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
-  font-family: var(--font-mono);
-}
-.detail-section h3::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-.prompt-block {
-  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
-  padding: 10px 14px; font-size: 13px; line-height: 1.5; white-space: pre-wrap;
-  font-family: var(--font-mono);
-}
-.prompt-block.collapsed { max-height: 120px; overflow: hidden; position: relative; }
-.prompt-block.collapsed::after {
-  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
-  height: 40px; background: linear-gradient(transparent, var(--surface2));
-}
-.expand-btn {
-  display: inline-block; margin-top: 4px; padding: 2px 8px; font-size: 11px;
-  color: var(--blue); cursor: pointer; background: none; border: none; font-family: inherit;
-}
-.expand-btn:hover { text-decoration: underline; }
-
-/* todos */
-.todo-list { display: flex; flex-direction: column; gap: 3px; }
-.todo-item {
-  display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px;
-  border-radius: 4px;
-}
-.todo-item:hover { background: var(--surface2); }
-.todo-item input[type="checkbox"] {
-  accent-color: var(--green); pointer-events: none;
-}
-.todo-item .todo-text { flex: 1; }
-.todo-item .todo-text.done { text-decoration: line-through; color: var(--text3); }
-
-/* tabs */
-.tab-bar {
-  display: flex; gap: 0; border-bottom: 1px solid var(--border);
-  background: var(--surface); padding: 0 16px; flex-shrink: 0;
-}
-.tab-btn {
-  padding: 9px 16px; font-size: 10px; color: var(--text3); background: none;
-  border: none; border-bottom: 2px solid transparent; cursor: pointer;
-  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .12em;
-  transition: color .15s, border-color .15s;
-}
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); text-shadow: 0 0 10px rgba(76,194,255,.5); }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
-/* timeline */
-.timeline {
-  padding: 8px 20px; position: relative;
-}
-.timeline::before {
-  content: ''; position: absolute; left: 28px; top: 0; bottom: 0;
-  width: 1px; background: var(--border);
-}
-.tl-item {
-  display: flex; gap: 10px; padding: 7px 0; position: relative;
-}
-.tl-marker {
-  width: 20px; height: 20px; border-radius: 50%; background: var(--surface2);
-  border: 2px solid var(--border); display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; margin-top: 2px; font-size: 10px; z-index: 1;
-}
-.tl-marker.user { border-color: var(--blue); background: var(--bg); color: var(--blue); }
-.tl-marker.tool { border-color: var(--orange); background: var(--bg); color: var(--orange); }
-.tl-marker.text { border-color: var(--green); background: var(--bg); color: var(--green); }
-.tl-marker.reasoning { border-color: var(--purple); background: var(--bg); color: var(--purple); }
-.tl-marker.patch { border-color: var(--yellow); background: var(--bg); color: var(--yellow); }
-.tl-marker.step-finish { border-color: var(--text3); background: var(--bg); color: var(--text3); }
-.tl-body { flex: 1; min-width: 0; padding-top: 2px; }
-.tl-header {
-  display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-size: 11px;
-}
-.tl-header .tl-role { font-weight: 500; color: var(--text2); }
-.tl-header .tl-time { color: var(--text3); margin-left: auto; }
-.tl-tool-line {
-  display: flex; align-items: center; gap: 6px; padding: 4px 8px;
-  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
-  font-size: 12px; font-family: var(--font-mono);
-  background: var(--surface2); transition: background .15s;
-}
-.tl-tool-line:hover { background: var(--surface3); }
-.tl-tool-line .tl-tool-icon {
-  font-size: 11px; width: 18px; text-align: center; flex-shrink: 0;
-}
-.tl-tool-line .tl-tool-name {
-  color: var(--orange); font-weight: 500; white-space: nowrap;
-}
-.tl-tool-line .tl-tool-input {
-  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text);
-}
-.tl-tool-status {
-  font-size: 10px; white-space: nowrap;
-}
-.tl-tool-status.completed { color: var(--green); }
-.tl-tool-status.running { color: var(--blue); }
-.tl-tool-status.error { color: var(--red); }
-.tl-tool-status.pending { color: var(--yellow); }
-
-.tl-tool-output {
-  display: none; margin-top: 4px; padding: 6px 10px; background: var(--bg);
-  border: 1px solid var(--border); border-radius: 4px; font-size: 11px;
-  white-space: pre-wrap; max-height: 200px; overflow-y: auto; line-height: 1.4;
-}
-.tl-tool-output.open { display: block; }
-
-.tl-text-block {
-  font-size: 12px; line-height: 1.5; white-space: pre-wrap;
-  color: var(--text); max-height: 300px; overflow-y: auto;
-}
-.tl-text-block.collapsed { max-height: 80px; overflow: hidden; position: relative; }
-.tl-text-block.collapsed::after {
-  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
-  height: 30px; background: linear-gradient(transparent, var(--bg));
-}
-
-.tl-reasoning-block {
-  font-size: 11px; color: var(--text2); font-style: italic;
-  max-height: 60px; overflow: hidden; cursor: pointer;
-}
-.tl-reasoning-block.expanded { max-height: none; }
-.tl-reasoning-block .reasoning-text { font-size: 11px; color: var(--text2); white-space: pre-wrap; }
-
-.tl-step-finish {
-  font-size: 11px; color: var(--text3);
-}
-.tl-patch {
-  font-size: 11px; color: var(--yellow);
-}
-
-/* global feed */
-.feed-header {
-  padding: 14px 20px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 10px;
-}
-.feed-header h2 {
-  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .16em;
-  font-family: var(--font-mono); color: var(--text2);
-}
-.feed-header .feed-count { font-size: 11px; color: var(--text2); }
-.feed-list { padding: 8px 0; }
-.feed-item {
-  display: flex; gap: 8px; padding: 6px 20px; font-size: 12px;
-  border-left: 2px solid transparent; transition: background .1s; cursor: pointer;
-}
-.feed-item:hover { background: var(--surface2); border-left-color: var(--border); }
-.feed-item .feed-icon { flex-shrink: 0; color: var(--text2); width: 16px; text-align: center; }
-.feed-item .feed-body { flex: 1; min-width: 0; }
-.feed-item .feed-session { color: var(--blue); font-weight: 500; font-size: 11px; }
-.feed-item .feed-summary {
-  color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-family: var(--font-mono); font-size: 11px;
-}
-.feed-item .feed-time { color: var(--text3); font-size: 10px; white-space: nowrap; }
-.feed-item.feed-tool { border-left-color: var(--orange); }
-.feed-item.feed-text { border-left-color: var(--green); }
-.feed-item.feed-reasoning { border-left-color: var(--purple); }
-
-/* log viewer in main */
-.log-container { padding: 8px 0; }
-.log-line {
-  padding: 1px 20px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
-  white-space: pre-wrap; word-break: break-all; border-left: 2px solid transparent;
-}
-.log-line:hover { background: rgba(255,255,255,.02); }
-.log-line.level-INFO { border-left-color: var(--blue); }
-.log-line.level-WARN { border-left-color: var(--yellow); }
-.log-line.level-ERROR { border-left-color: var(--red); color: var(--red); }
-.log-line.level-DEBUG { border-left-color: var(--text3); color: var(--text3); }
-.log-line .lt { color: var(--text3); margin-right: 6px; }
-.log-status {
-  padding: 6px 20px; font-size: 11px; color: var(--text2);
-  border-top: 1px solid var(--border);
-}
-
-/* error state */
-.error-box {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  height: 100%; padding: 60px 20px; text-align: center; gap: 12px;
-}
-.error-box h2 { font-size: 18px; color: var(--yellow); }
-.error-box p { font-size: 13px; color: var(--text2); max-width: 400px; line-height: 1.5; }
-
-@media (max-width: 800px) {
-  #sidebar { width: 280px; min-width: 280px; }
-  header .stats { gap: 8px; }
-}
-@media (max-width: 600px) {
-  .app-container { flex-direction: column; }
-  #sidebar { width: 100%; min-width: 0; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--border); }
-  .session-card .prompt-preview { -webkit-line-clamp: 1; }
-}
-</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="app.js"></script>
 </head>
-<body>
+<body data-tab="feed" data-mview="sessions" data-selected="false" data-mode="desk">
+<a class="skip" href="#search">Vai alla ricerca sessioni</a>
 
-<header>
-  <h1><span class="hl">◆</span> opencode <span class="sub">mission control</span></h1>
-  <div class="stats" id="headerStats" aria-live="polite">
-    <span class="stat">active <strong class="num" id="hActive">0</strong></span>
-    <span class="stat">procs <strong class="num" id="hProcs">0</strong></span>
-    <span class="stat">stuck <strong class="num stuck" id="hStuck">0</strong></span>
-    <span class="stat cost">24h <strong class="num" id="hCost">$0</strong></span>
-  </div>
-  <div class="right">
-    <span class="sse-indicator"><span class="sse-signal connecting" id="sseDot" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="sseLabel">connecting</span></span>
+<!-- ICON SPRITE: viewBox 0 0 16 16, stroke icons (fill none, stroke currentColor via .ic) -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-exec" viewBox="0 0 16 16"><path d="M1.5 3h13v10h-13z"/><path d="M4 6l2.2 2L4 10M8 10.5h4"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13H3v-3z"/><path d="M9 4l3 3"/></symbol>
+  <symbol id="i-read" viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M9.5 1.5v3h3M5.5 8h5M5.5 10.5h5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l4 4"/></symbol>
+  <symbol id="i-web" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M1.5 8h13M8 1.5c2 2 2.8 4.2 2.8 6.5S10 12.5 8 14.5C6 12.5 5.2 10.3 5.2 8S6 3.5 8 1.5z"/></symbol>
+  <symbol id="i-agent" viewBox="0 0 16 16"><path d="M8 1.5l5.5 3.2v6.6L8 14.5l-5.5-3.2V4.7z"/><circle cx="8" cy="8" r="1.8"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 16 16"><path d="M10 2a3.5 3.5 0 0 0-3.4 4.4L2 11v3h3l4.6-4.6A3.5 3.5 0 0 0 14 6l-2.2.6-1.4-1.4L11 3z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 16 16"><path d="M2 2.5h12v8H7.5L4 13.5v-3H2z"/></symbol>
+  <symbol id="i-text" viewBox="0 0 16 16"><path d="M2.5 3.5h11M2.5 6.5h11M2.5 9.5h8M2.5 12.5h5"/></symbol>
+  <symbol id="i-reasoning" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1" fill="currentColor"/><circle cx="8" cy="8" r="1" fill="currentColor"/><circle cx="12.5" cy="8" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-step" viewBox="0 0 16 16"><path d="M1.5 8h13M4.5 5v6M11.5 5v6"/></symbol>
+  <symbol id="i-compaction" viewBox="0 0 16 16"><path d="M8 1.5v4M6 3.5l2 2 2-2M8 14.5v-4M6 12.5l2-2 2 2M2 8h12"/></symbol>
+  <symbol id="i-idle" viewBox="0 0 16 16"><path d="M4.5 4.5h7v7h-7z"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M12 1.5v3h-3"/></symbol>
+  <symbol id="i-error" viewBox="0 0 16 16"><path d="M8 1.8l6.5 12h-13z"/><path d="M8 6.5v3.5M8 11.6v.6"/></symbol>
+  <symbol id="i-switch" viewBox="0 0 16 16"><path d="M2 5h11l-2.5-2.5M14 11H3l2.5 2.5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></symbol>
+  <symbol id="i-back" viewBox="0 0 16 16"><path d="M10 3L5 8l5 5"/></symbol>
+  <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6M8 11.5v.6"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 3l8 5-8 5z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16"><path d="M5.5 5.5h8v8h-8z"/><path d="M10.5 5.5v-3h-8v8h3"/></symbol>
+  <symbol id="i-list" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/></symbol>
+  <symbol id="i-feed" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"/></symbol>
+  <symbol id="i-log" viewBox="0 0 16 16"><path d="M4.5 3h9M4.5 6.5h9M4.5 10h9M4.5 13.5h5M1.5 3h1M1.5 6.5h1M1.5 10h1M1.5 13.5h1"/></symbol>
+  <symbol id="i-system" viewBox="0 0 16 16"><path d="M4 4h8v8H4z"/><path d="M6 1.5V4M10 1.5V4M6 12v2.5M10 12v2.5M1.5 6H4M1.5 10H4M12 6h2.5M12 10h2.5"/></symbol>
+</svg>
+
+<header id="hdr" class="hdr">
+  <div class="hdr-in">
+    <div class="brand">
+      <span class="lamp" id="brand-lamp" data-lamp="idle" aria-hidden="true"></span>
+      <h1 class="brand-name">OPENCODE</h1>
+      <span class="brand-sub">mission control</span>
+    </div>
+    <ul class="kpis" aria-label="Indicatori">
+      <li><button type="button" class="kpi" id="kpi-btn-working" data-action="filter" data-filter="working">
+        <span class="kpi-label">Al lavoro</span><span class="kpi-val" id="kpi-working" data-testid="kpi-working">0</span></button></li>
+      <li><button type="button" class="kpi" id="kpi-btn-attention" data-action="filter" data-filter="attention">
+        <span class="kpi-label">Allarme</span><span class="kpi-val" id="kpi-attention" data-testid="kpi-attention">0</span></button></li>
+      <li><button type="button" class="kpi" id="kpi-btn-procs" data-action="tab" data-tab="system">
+        <span class="kpi-label">Processi</span><span class="kpi-val" id="kpi-procs" data-testid="kpi-procs">0</span></button></li>
+      <li><div class="kpi kpi-cost" title="Reale: costo fatturato dal provider. Stima: stessi token al listino del modello a pagamento equivalente.">
+        <span class="kpi-label">Costo 24h</span>
+        <span class="kpi-pair"><span class="kpi-val" id="kpi-cost" data-testid="kpi-cost">$0</span>
+          <span class="kpi-est"><span class="kpi-est-tag">stima</span> <span id="kpi-est" data-testid="kpi-est">~$0</span></span></span></div></li>
+    </ul>
+    <div class="hdr-status">
+      <div class="svc" id="svc" data-state="unknown" data-testid="service-status"><span class="lamp" data-lamp="idle" aria-hidden="true"></span><span id="svc-txt">srv ?</span></div>
+      <div class="conn" id="conn" data-state="connecting" data-testid="conn-lamp"><span class="lamp" data-lamp="pending" aria-hidden="true"></span><span id="conn-txt">connessione</span></div>
+      <button type="button" class="ibtn" id="help-btn" aria-label="Scorciatoie e legenda" aria-haspopup="dialog" aria-keyshortcuts="?"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg></button>
+    </div>
   </div>
 </header>
 
-<div class="app-container">
-  <aside id="sidebar">
-    <div class="sidebar-filters">
-      <div class="filter-row">
-        <label for="searchInput" class="sr-only">Search sessions</label>
-        <input type="search" id="searchInput" name="session-search" autocomplete="off" spellcheck="false" placeholder="Search sessions by title, prompt, directory…">
+<section id="alerts" class="alerts" aria-label="Allarmi attivi" hidden>
+  <ul id="alerts-list" class="alerts-list"></ul>
+  <p id="alerts-more" class="alerts-more" hidden></p>
+</section>
+
+<main id="layout" class="layout">
+  <section id="zone-sessions" class="zone-sessions" aria-labelledby="sessions-h">
+    <div class="zone-head">
+      <h2 id="sessions-h" class="zone-title">Sessioni</h2>
+      <span class="zone-count" id="sessions-count">0</span>
+      <button type="button" class="chip" id="subagents-toggle" aria-pressed="false">Sub-agent</button>
+    </div>
+    <div class="search">
+      <label for="search" class="sr">Cerca sessioni</label>
+      <svg class="ic search-ic" aria-hidden="true"><use href="#i-search"/></svg>
+      <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Cerca: titolo, prompt, cartella, modello" aria-keyshortcuts="/" data-testid="search-input">
+    </div>
+    <div class="filters" role="group" aria-label="Filtra per stato">
+      <button type="button" class="fchip" data-filter="all" aria-pressed="true" data-testid="filter-chip"><span class="fchip-n" data-count="all">0</span> <span class="fchip-l">Tutte</span></button>
+      <button type="button" class="fchip" data-filter="working" aria-pressed="false" data-testid="filter-chip"><span class="fchip-n" data-count="working">0</span> <span class="fchip-l">Lavoro</span></button>
+      <button type="button" class="fchip" data-filter="attention" aria-pressed="false" data-testid="filter-chip"><span class="fchip-n" data-count="attention">0</span> <span class="fchip-l">Allarme</span></button>
+      <button type="button" class="fchip" data-filter="recent" aria-pressed="false" data-testid="filter-chip"><span class="fchip-n" data-count="recent">0</span> <span class="fchip-l">Recenti</span></button>
+      <button type="button" class="fchip" data-filter="rest" aria-pressed="false" data-testid="filter-chip"><span class="fchip-n" data-count="rest">0</span> <span class="fchip-l">Ferme</span></button>
+    </div>
+    <div id="sessions-scroll" class="zone-scroll">
+      <div id="standby" class="standby" hidden data-testid="standby-card">
+        <canvas id="standby-canvas" aria-hidden="true"></canvas>
+        <p class="standby-txt"><span class="standby-k">Standby</span><span id="standby-sum"></span></p>
       </div>
-      <div class="filter-row" id="filterRow" role="group" aria-label="Filter sessions by status">
-        <button class="filter-btn active" data-filter="all" aria-pressed="true">All</button>
-        <button class="filter-btn" data-filter="working" aria-pressed="false">Working</button>
-        <button class="filter-btn" data-filter="active" aria-pressed="false">Active</button>
-        <button class="filter-btn" data-filter="idle" aria-pressed="false">Idle</button>
-        <button class="filter-btn" data-filter="stuck" aria-pressed="false">Stuck</button>
+      <ul id="session-list" class="slist" aria-label="Elenco sessioni" data-testid="session-list"></ul>
+      <div id="sessions-state" class="state" data-kind="loading"><p class="state-k">Caricamento<span class="cursor"></span></p><p class="state-msg"></p><button type="button" class="btn state-act" hidden></button></div>
+    </div>
+  </section>
+
+  <div id="zone-center" class="zone-center">
+    <div id="tabs" class="tabs" role="tablist" aria-label="Vista">
+      <button type="button" class="tab" role="tab" id="tab-feed" data-tab="feed" aria-controls="panel-feed" aria-selected="true" tabindex="0" data-testid="tab-feed">Attività</button>
+      <button type="button" class="tab" role="tab" id="tab-log" data-tab="log" aria-controls="panel-log" aria-selected="false" tabindex="-1" data-testid="tab-log">Log</button>
+      <button type="button" class="tab" role="tab" id="tab-system" data-tab="system" aria-controls="panel-system" aria-selected="false" tabindex="-1" data-testid="tab-system">Sistema</button>
+    </div>
+
+    <section id="panel-feed" class="tabpanel panel-feed" role="tabpanel" aria-labelledby="tab-feed">
+      <div class="toolbar">
+        <h2 class="zone-title">Attività</h2>
+        <div class="seg" role="group" aria-label="Filtra attività">
+          <button type="button" class="seg-btn" data-feed-filter="all" aria-pressed="true">Tutto</button>
+          <button type="button" class="seg-btn" data-feed-filter="tool" aria-pressed="false">Tool</button>
+          <button type="button" class="seg-btn" data-feed-filter="problems" aria-pressed="false">Problemi</button>
+        </div>
+        <button type="button" class="chip" id="steps-toggle" aria-pressed="false">Step</button>
+        <button type="button" class="chip" id="feed-pause" aria-pressed="false" aria-keyshortcuts="p"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span class="chip-txt">Pausa</span></button>
+        <span class="toolbar-meta" id="feed-count">0 eventi</span>
+      </div>
+      <div class="scroll-wrap">
+        <button type="button" id="new-pill" class="pill pill-top" hidden data-testid="new-pill"></button>
+        <div id="feed-scroll" class="zone-scroll">
+          <ol id="feed-list" class="feed" data-filter="all" aria-label="Attività recente, la più recente in alto" data-testid="feed-list"></ol>
+          <div id="feed-state" class="state" data-kind="loading"><p class="state-k">Caricamento<span class="cursor"></span></p><p class="state-msg"></p><button type="button" class="btn state-act" hidden></button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-log" class="tabpanel panel-log" role="tabpanel" aria-labelledby="tab-log">
+      <div class="toolbar">
+        <h2 class="zone-title">Log</h2>
+        <div class="seg" role="group" aria-label="Livello">
+          <button type="button" class="seg-btn" data-log-level="all" aria-pressed="true">Tutti</button>
+          <button type="button" class="seg-btn" data-log-level="warn" aria-pressed="false">Warn+</button>
+        </div>
+        <div class="log-search">
+          <label for="log-search" class="sr">Filtra il log</label>
+          <svg class="ic search-ic" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="log-search" type="search" autocomplete="off" spellcheck="false" placeholder="Filtra testo">
+        </div>
+        <button type="button" class="chip" id="log-pause" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span class="chip-txt">Pausa</span></button>
+        <span class="toolbar-meta" id="log-status"></span>
+      </div>
+      <div class="scroll-wrap">
+        <button type="button" id="log-pill" class="pill pill-bottom" hidden></button>
+        <div id="log-scroll" class="zone-scroll">
+          <ol id="log-list" class="logs" data-level="all" aria-label="Log del server opencode" data-testid="log-list"></ol>
+          <div id="log-state" class="state" data-kind="loading" hidden><p class="state-k">Caricamento<span class="cursor"></span></p><p class="state-msg"></p><button type="button" class="btn state-act" hidden></button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-system" class="tabpanel panel-system" role="tabpanel" aria-labelledby="tab-system">
+      <div class="toolbar"><h2 class="zone-title">Sistema</h2></div>
+      <div id="system-scroll" class="zone-scroll" tabindex="0" aria-label="Sistema">
+        <section class="sys-sec" aria-labelledby="svc-h">
+          <h3 id="svc-h" class="d-h">Servizio opencode</h3>
+          <div class="module" id="svc-card">
+            <p class="module-k"><span class="lamp" id="svc-card-lamp" data-lamp="idle" aria-hidden="true"></span> <span id="svc-card-state">—</span></p>
+            <dl class="kv">
+              <div class="kv-row"><dt>Versione</dt><dd id="svc-version">—</dd></div>
+              <div class="kv-row"><dt>URL</dt><dd id="svc-url">—</dd></div>
+              <div class="kv-row"><dt>PID</dt><dd id="svc-pid">—</dd></div>
+            </dl>
+          </div>
+        </section>
+        <section class="sys-sec" aria-labelledby="proc-h">
+          <h3 id="proc-h" class="d-h">Processi <span class="n" id="proc-count">0</span></h3>
+          <table id="proc-table" class="ptable" role="table" data-testid="process-table">
+            <caption class="sr">Processi opencode</caption>
+            <thead role="rowgroup"><tr role="row">
+              <th role="columnheader" scope="col">PID</th><th role="columnheader" scope="col">Tipo</th><th role="columnheader" scope="col">Stato</th>
+              <th role="columnheader" scope="col" class="num">CPU</th><th role="columnheader" scope="col" class="num">RAM</th><th role="columnheader" scope="col" class="num">Età</th>
+              <th role="columnheader" scope="col" class="num">FD</th><th role="columnheader" scope="col">Comando</th></tr></thead>
+            <tbody id="proc-body" role="rowgroup"></tbody>
+          </table>
+          <div id="proc-state" class="state" data-kind="empty" hidden><p class="state-k">Nessun processo opencode.</p><p class="state-msg"></p><button type="button" class="btn state-act" hidden></button></div>
+        </section>
+        <section class="sys-sec" aria-labelledby="lock-h">
+          <h3 id="lock-h" class="d-h">Lock</h3>
+          <table id="lock-table" class="ptable" role="table">
+            <caption class="sr">Lock delle sessioni</caption>
+            <thead role="rowgroup"><tr role="row">
+              <th role="columnheader" scope="col">Sessione</th><th role="columnheader" scope="col" class="num">PID</th><th role="columnheader" scope="col" class="num">Heartbeat</th>
+              <th role="columnheader" scope="col">PID vivo</th><th role="columnheader" scope="col">Stato</th></tr></thead>
+            <tbody id="lock-body" role="rowgroup"></tbody>
+          </table>
+          <div id="lock-state" class="state" data-kind="empty" hidden><p class="state-k">Nessun lock.</p><p class="state-msg"></p><button type="button" class="btn state-act" hidden></button></div>
+        </section>
+        <section class="sys-sec" aria-labelledby="db-h">
+          <h3 id="db-h" class="d-h">Database</h3>
+          <p id="db-state">—</p>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <aside id="detail" class="zone-detail" role="region" aria-labelledby="d-title" data-testid="detail-panel">
+    <div class="d-head">
+      <button type="button" class="ibtn" id="d-close" aria-label="Chiudi dettaglio"><svg class="ic ic-close" aria-hidden="true"><use href="#i-close"/></svg><svg class="ic ic-back" aria-hidden="true"><use href="#i-back"/></svg></button>
+      <div class="d-headtxt">
+        <p class="d-status" id="d-status-line" data-testid="detail-status"><span class="lamp" id="d-lamp" data-lamp="idle" aria-hidden="true"></span><span id="d-status"></span><span aria-hidden="true">·</span><time id="d-updated"></time></p>
+        <h2 class="d-title" id="d-title" data-testid="detail-title"></h2>
+      </div>
+      <button type="button" class="ibtn" id="d-copy" aria-label="Copia ID sessione"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
+    </div>
+    <div id="d-scroll" class="d-scroll" tabindex="0" aria-label="Dettaglio sessione">
+      <div id="d-state" class="state" data-kind="loading"><p class="state-k">Caricamento<span class="cursor"></span></p><p class="state-msg"></p><button type="button" class="btn state-act" hidden></button></div>
+      <div id="d-body" class="d-body" hidden>
+        <section class="d-sec" aria-labelledby="d-meta-h"><h3 id="d-meta-h" class="d-h">Dati</h3><dl id="d-meta" class="kv"></dl></section>
+        <section class="d-sec" aria-labelledby="d-kpi-h"><h3 id="d-kpi-h" class="d-h">Consumi</h3>
+          <div class="d-kpis">
+            <div class="module"><p class="module-k">Token</p><p class="module-v" id="d-kpi-tokens">—</p><p class="module-s" id="d-kpi-tokens-sub"></p></div>
+            <div class="module"><p class="module-k">Cache</p><p class="module-v" id="d-kpi-cache">—</p><p class="module-s" id="d-kpi-cache-sub"></p></div>
+            <div class="module mod-real"><p class="module-k">Costo reale</p><p class="module-v" id="d-kpi-cost">—</p><p class="module-s" id="d-kpi-cost-sub">fatturato dal provider</p></div>
+            <div class="module mod-est" id="d-kpi-est-box"><p class="module-k">Stima</p><p class="module-v" id="d-kpi-est">—</p><p class="module-s" id="d-kpi-est-sub"></p></div>
+          </div>
+        </section>
+        <section class="d-sec" id="d-todos-sec" aria-labelledby="d-todos-h" hidden>
+          <h3 id="d-todos-h" class="d-h">Todo</h3>
+          <div class="d-todos-head"><span class="rail rail-lg" id="d-rail" aria-hidden="true" data-testid="charge-rail"><span class="rail-fill"></span></span><span id="d-todos-count" class="rail-txt"></span></div>
+          <ol id="d-todos" class="todos"></ol>
+        </section>
+        <section class="d-sec" id="d-children-sec" aria-labelledby="d-children-h" hidden>
+          <h3 id="d-children-h" class="d-h">Sub-agent</h3><ul id="d-children" class="children"></ul>
+        </section>
+        <section class="d-sec" id="d-prompt-sec" aria-labelledby="d-prompt-h" hidden>
+          <h3 id="d-prompt-h" class="d-h">Prompt</h3>
+          <div class="clamp" id="d-prompt-clamp"><p id="d-prompt" class="tx-body"></p></div>
+          <button type="button" class="more" id="d-prompt-more" hidden>Mostra tutto</button>
+        </section>
+        <section class="d-sec" id="d-tx-sec" aria-labelledby="d-tx-h">
+          <h3 id="d-tx-h" class="d-h">Trascrizione</h3>
+          <button type="button" class="btn" id="d-older" hidden></button>
+          <ol id="d-transcript" class="tx" data-testid="transcript"></ol>
+        </section>
       </div>
     </div>
-    <div class="session-list" id="sessionList" role="listbox" aria-label="Sessions"></div>
+    <button type="button" id="d-jump" class="pill pill-bottom" hidden>Ultimi eventi ↓</button>
   </aside>
+</main>
 
-  <main id="main">
-    <div id="dbError" style="display:none">
-      <div class="error-box">
-        <h2>◆ Database not found</h2>
-        <p>Could not connect to the opencode database at <code>~/.local/share/opencode/opencode.db</code>.</p>
-        <p>Make sure opencode is installed and has been used at least once.</p>
-      </div>
-    </div>
-    <div id="globalFeed"></div>
-    <div id="sessionDetail" style="display:none"></div>
-  </main>
-</div>
+<div id="scrim" class="scrim" aria-hidden="true"></div>
 
-<script>
-// ---- state ----
-const S = {
-  sessions: [],
-  processes: [],
-  cost24h: 0,
-  selectedId: null,
-  detail: null,
-  feed: [],
-  filter: 'all',
-  search: '',
-  sseOk: false,
-  sseRetry: 1000,
-  pollTimer: null,
-  logES: null,
-  logLines: [],
-};
+<nav id="mnav" class="mnav" aria-label="Sezioni">
+  <button type="button" class="mnav-btn" data-nav="sessions" aria-current="page" data-testid="mnav-sessions"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg><span>Sessioni</span><span class="mnav-badge" id="mnav-badge" hidden></span></button>
+  <button type="button" class="mnav-btn" data-nav="feed" data-testid="mnav-feed"><svg class="ic" aria-hidden="true"><use href="#i-feed"/></svg><span>Attività</span></button>
+  <button type="button" class="mnav-btn" data-nav="log" data-testid="mnav-log"><svg class="ic" aria-hidden="true"><use href="#i-log"/></svg><span>Log</span></button>
+  <button type="button" class="mnav-btn" data-nav="system" data-testid="mnav-system"><svg class="ic" aria-hidden="true"><use href="#i-system"/></svg><span>Sistema</span></button>
+</nav>
 
-// ---- dom helpers ----
-const $ = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
+<div id="toasts" class="toasts" aria-live="off"></div>
+<p id="announcer" class="sr" aria-live="polite" aria-atomic="true"></p>
 
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
+<dialog id="help" class="help" aria-labelledby="help-h" data-testid="help-dialog">
+  <div class="help-head"><h2 id="help-h" class="zone-title">Scorciatoie e legenda</h2>
+    <button type="button" class="ibtn" id="help-close" aria-label="Chiudi"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+  <div class="help-body">
+    <section aria-labelledby="hk-h"><h3 id="hk-h" class="d-h">Tastiera</h3>
+      <dl class="keys">
+        <dt><kbd>/</kbd></dt><dd>Cerca sessioni</dd>
+        <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Sessione successiva / precedente (focus)</dd>
+        <dt><kbd>Invio</kbd></dt><dd>Apri la sessione</dd>
+        <dt><kbd>.</kbd> <kbd>,</kbd></dt><dd>Apri la sessione successiva / precedente</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Chiudi dettaglio, aiuto o ricerca</dd>
+        <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Attività / Log / Sistema</dd>
+        <dt><kbd>a</kbd></dt><dd>Mostra solo le sessioni in allarme (di nuovo: tutte)</dd>
+        <dt><kbd>p</kbd></dt><dd>Pausa / riprendi il feed</dd>
+        <dt><kbd>g</kbd></dt><dd>Torna in cima al feed</dd>
+        <dt><kbd>?</kbd></dt><dd>Questo aiuto</dd>
+      </dl></section>
+    <section aria-labelledby="hl-h"><h3 id="hl-h" class="d-h">Stati</h3>
+      <ul class="legend">
+        <li><span class="lamp" data-lamp="working" aria-hidden="true"></span>Al lavoro: genera o esegue un tool adesso</li>
+        <li><span class="lamp" data-lamp="active" aria-hidden="true"></span>Recente: finita da meno di 5 minuti</li>
+        <li><span class="lamp" data-lamp="idle" aria-hidden="true"></span>Inattiva</li>
+        <li><span class="lamp" data-lamp="failed" aria-hidden="true"></span>Fallita: errore del provider o quota</li>
+        <li><span class="lamp" data-lamp="stuck" aria-hidden="true"></span>Bloccata: in corso ma muta da oltre 10 minuti</li>
+        <li><span class="lamp" data-lamp="suspended" aria-hidden="true"></span>Sospesa: parcheggiata nel servizio opencode</li>
+        <li><span class="lamp" data-lamp="pending" aria-hidden="true"></span>In coda / in attesa</li>
+      </ul></section>
+    <section aria-labelledby="hf-h"><h3 id="hf-h" class="d-h">Famiglie di tool</h3>
+      <ul class="legend">
+        <li data-family="exec"><span class="swatch" aria-hidden="true"></span>Esecuzione: bash, shell</li>
+        <li data-family="edit"><span class="swatch" aria-hidden="true"></span>Modifica: edit, write, patch</li>
+        <li data-family="read"><span class="swatch" aria-hidden="true"></span>Lettura: read, grep, glob</li>
+        <li data-family="web"><span class="swatch" aria-hidden="true"></span>Web: webfetch, websearch</li>
+        <li data-family="agent"><span class="swatch" aria-hidden="true"></span>Agent: task, todo, skill</li>
+        <li data-family="other"><span class="swatch" aria-hidden="true"></span>Altro</li>
+      </ul></section>
+    <section aria-labelledby="hc-h"><h3 id="hc-h" class="d-h">Costi</h3>
+      <p><strong>$</strong> = costo reale fatturato. <strong>~$</strong> = stima: stessi token al listino del modello a pagamento equivalente.</p></section>
+  </div>
+</dialog>
 
-function relTime(ms) {
-  if (!ms) return '';
-  const d = Date.now() - ms;
-  if (d < 5000) return 'now';
-  if (d < 60000) return Math.floor(d / 1000) + 's';
-  if (d < 3600000) return Math.floor(d / 60000) + 'm';
-  if (d < 86400000) return Math.floor(d / 3600000) + 'h';
-  return Math.floor(d / 86400000) + 'd';
-}
+<!-- ===== TEMPLATES (contract with app.js) ===== -->
+<template id="tpl-sgroup"><li class="sgroup"><h3 class="sgroup-h"></h3></li></template>
 
-function fmtNum(n) { return (n || 0).toLocaleString(); }
-function fmtCost(n) {
-  if (n == null || n === 0) return '$0';
-  if (n < 0.001) return '$' + n.toFixed(6);
-  if (n < 1) return '$' + n.toFixed(4);
-  return '$' + n.toFixed(2);
-}
-function shortId(id) {
-  if (!id) return '';
-  return id.length > 16 ? id.slice(0, 10) + '\u2026' : id;
-}
+<template id="tpl-srow"><li class="srow-li"><button type="button" class="srow" data-testid="session-row">
+  <span class="srow-l1"><span class="lamp" aria-hidden="true"></span><span class="srow-status"></span><span class="srow-dir"></span><time class="srow-time"></time></span>
+  <span class="srow-title"></span>
+  <span class="srow-live"><svg class="ic" aria-hidden="true"><use href="#i-idle"/></svg><span class="srow-live-txt"></span></span>
+  <span class="srow-l4"><span class="rail" aria-hidden="true" data-testid="charge-rail"><span class="rail-fill"></span></span><span class="rail-txt"><span class="sr">todo </span><span class="rail-n"></span></span><span class="srow-model"></span><span class="srow-sub"></span><span class="cost"><span class="sr">costo reale </span><span class="cost-real"></span><span class="cost-est"><span class="sr">stima </span><span class="cost-est-v"></span></span></span></span>
+</button></li></template>
 
-// ---- sse ----
-let evSource = null;
+<template id="tpl-frow"><li class="frow" data-testid="feed-row">
+  <time class="frow-time"></time>
+  <svg class="ic frow-ic" aria-hidden="true"><use href="#i-tool"/></svg>
+  <button type="button" class="frow-sess"><span class="frow-sess-txt"></span></button>
+  <span class="frow-sum"></span>
+  <span class="frow-state"><span class="lamp" aria-hidden="true"></span><span class="frow-state-txt"></span></span>
+</li></template>
 
-function connectSSE() {
-  if (evSource) { evSource.close(); evSource = null; }
-  setSSEStatus('connecting');
-  evSource = new EventSource('/api/stream');
-  evSource.addEventListener('connected', () => {
-    S.sseRetry = 1000;
-    setSSEStatus('connected');
-  });
-  evSource.addEventListener('overview', e => {
-    try {
-      const d = JSON.parse(e.data);
-      S.sessions = d.sessions || [];
-      S.processes = d.processes || [];
-      S.cost24h = d.cost24h || 0;
-      renderAll();
-      stopPolling();
-    } catch {}
-  });
-  evSource.addEventListener('part', e => {
-    try {
-      const p = JSON.parse(e.data);
-      handlePart(p);
-    } catch {}
-  });
-  evSource.onerror = () => {
-    evSource.close();
-    evSource = null;
-    setSSEStatus('disconnected');
-    S.sseRetry = Math.min(S.sseRetry * 2, 30000);
-    setTimeout(connectSSE, S.sseRetry);
-    startPolling();
-  };
-}
+<template id="tpl-kv"><div class="kv-row"><dt></dt><dd></dd></div></template>
 
-function setSSEStatus(s) {
-  const dot = $('#sseDot');
-  const label = $('#sseLabel');
-  dot.className = 'sse-signal ' + s;
-  label.textContent = s === 'connected' ? 'uplink' : s === 'disconnected' ? 'no signal' : 'syncing';
-}
+<template id="tpl-todo"><li class="todo"><span class="todo-box" aria-hidden="true"></span><span class="todo-txt"></span></li></template>
 
-function startPolling() {
-  if (S.pollTimer) return;
-  S.pollTimer = setInterval(async () => {
-    try {
-      const r = await fetch('/api/overview');
-      S.sessions = await r.json();
-      const r2 = await fetch('/api/processes');
-      S.processes = await r2.json();
-      renderAll();
-    } catch {}
-  }, 5000);
-}
+<template id="tpl-child"><li><button type="button" class="child"><span class="lamp" aria-hidden="true"></span><span class="child-title"></span><span class="child-status"></span></button></li></template>
 
-function stopPolling() {
-  if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
-}
+<template id="tpl-tx-msg"><li class="tx-msg"><span class="tx-role"></span><span class="tx-model"></span><time class="tx-time"></time></li></template>
 
-function handlePart(p) {
-  if (p.sessionId === S.selectedId && S.detail) {
-    refreshDetail(S.selectedId);
-  }
-  const exists = S.feed.findIndex(f => f.id === p.id);
-  if (exists === -1) {
-    S.feed.unshift(p);
-    if (S.feed.length > 200) S.feed.length = 200;
-  }
-  if (!S.selectedId) renderGlobalFeed();
-}
+<template id="tpl-tx-user"><li class="tx-item tx-user" data-kind="user" data-testid="tx-item"><div class="clamp"><p class="tx-body"></p></div><button type="button" class="more" hidden>Mostra tutto</button></li></template>
 
-// ---- render dispatch ----
-function renderAll() {
-  renderHeader();
-  renderSessionList();
-  if (S.selectedId && S.detail) {
-    renderSessionDetail();
-  } else if (S.selectedId) {
-    refreshDetail(S.selectedId);
-  } else {
-    renderGlobalFeed();
-  }
-}
+<template id="tpl-tx-text"><li class="tx-item tx-text" data-kind="text" data-testid="tx-item"><div class="clamp"><p class="tx-body"></p></div><button type="button" class="more" hidden>Mostra tutto</button></li></template>
 
-// ---- header ----
-function renderHeader() {
-  const active = S.sessions.filter(s => s.status === 'working' || s.status === 'active').length;
-  const stuck = S.sessions.filter(s => s.status === 'stuck').length;
-  $('#hActive').textContent = active;
-  $('#hProcs').textContent = S.processes.length;
-  const ht = $('#hStuck');
-  ht.textContent = stuck;
-  ht.className = 'num' + (stuck > 0 ? ' stuck' : '');
-  $('#hCost').textContent = fmtCost(S.cost24h);
-}
+<template id="tpl-tx-reason"><li class="tx-item tx-reason" data-kind="reason" data-testid="tx-item"><details><summary><svg class="ic tx-chev" aria-hidden="true"><use href="#i-chevron"/></svg><span class="tx-k">Ragionamento</span><span class="tx-meta"></span></summary><p class="tx-body"></p></details></li></template>
 
-// ---- session card ----
-function sessionCardHTML(s) {
-  const isSelected = s.id === S.selectedId;
-  const la = s.lastActivity;
-  let lastActStr = '';
-  if (la) {
-    if (la.type === 'tool') lastActStr = escapeHtml(la.tool) + ': ' + escapeHtml(la.summary);
-    else if (la.type === 'text') lastActStr = escapeHtml(la.summary);
-    else lastActStr = la.type;
-  }
-  const todoPct = s.todos.total > 0 ? Math.round((s.todos.done / s.todos.total) * 100) : 0;
-  const dirShort = s.directory ? s.directory.split('/').pop() || s.directory : '';
-  return '<div class="session-card' + (isSelected ? ' selected' : '') + '" data-id="' + escapeHtml(s.id) + '" role="option" tabindex="0" aria-selected="' + isSelected + '">' +
-    '<div class="row1">' +
-      statusBadgeHTML(s.status) +
-      '<span class="title" title="' + escapeHtml(s.title) + '">' + escapeHtml(s.title) + '</span>' +
-      '<span class="time">' + relTime(s.timeUpdated) + '</span>' +
-    '</div>' +
-    '<div class="prompt-preview">' + escapeHtml(s.firstUserPrompt || '') + '</div>' +
-    '<div class="row2">' +
-      (dirShort ? '<span class="dir">' + escapeHtml(dirShort) + '</span>' : '') +
-      '<span class="agent">' + escapeHtml(s.agent) + '</span>' +
-      (s.model ? '<span class="model">' + escapeHtml(s.model) + '</span>' : '') +
-    '</div>' +
-    '<div class="row3">' +
-      (lastActStr ? '<span class="last-activity" title="' + escapeHtml(lastActStr) + '">' + escapeHtml(lastActStr) + '</span>' : '') +
-      (s.todos.total > 0 ? '<span class="todo-bar"><span class="todo-track"><span class="todo-fill" style="width:' + todoPct + '%"></span></span>' + s.todos.done + '/' + s.todos.total + '</span>' : '') +
-      '<span class="cost-display">' + fmtCost(s.cost) + '</span>' +
-    '</div>' +
-  '</div>';
-}
+<template id="tpl-tx-tool"><li class="tx-item tx-tool" data-kind="tool" data-testid="tx-item"><details><summary class="tx-tool-sum"><svg class="ic tx-ic" aria-hidden="true"><use href="#i-tool"/></svg><span class="tx-tool-name"></span><span class="tx-tool-in"></span><span class="tx-dur"></span><span class="lamp" aria-hidden="true"></span><span class="tx-state"></span><svg class="ic tx-chev" aria-hidden="true"><use href="#i-chevron"/></svg></summary><pre class="tx-out" tabindex="0"></pre></details></li></template>
 
-function statusBadgeHTML(st) {
-  const icons = { working: '\u25CF', active: '\u25CF', idle: '\u25CB', stuck: '\u2716' };
-  return '<span class="status-badge ' + st + '"><span class="dot"></span>' + st + '</span>';
-}
+<template id="tpl-tx-step"><li class="tx-item tx-step" data-kind="step" data-testid="tx-item"><span class="tx-step-txt"></span></li></template>
 
-// ---- session list ----
-function renderSessionList() {
-  const el = $('#sessionList');
-  let list = S.sessions;
-  if (S.filter !== 'all') list = list.filter(s => s.status === S.filter);
-  if (S.search) {
-    const q = S.search.toLowerCase();
-    list = list.filter(s =>
-      (s.title || '').toLowerCase().includes(q) ||
-      (s.firstUserPrompt || '').toLowerCase().includes(q) ||
-      (s.directory || '').toLowerCase().includes(q) ||
-      (s.id || '').toLowerCase().includes(q)
-    );
-  }
-  if (list.length === 0) {
-    el.innerHTML = '<div class="empty-state" style="padding:30px 10px;font-size:12px;color:var(--text3)">No sessions match</div>';
-    return;
-  }
-  el.innerHTML = list.map(sessionCardHTML).join('');
-}
+<template id="tpl-tx-note"><li class="tx-item tx-note" data-kind="note" data-testid="tx-item"><p class="tx-note-h"><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg><span class="tx-k"></span></p><div class="clamp"><p class="tx-body"></p></div><button type="button" class="more" hidden>Mostra tutto</button></li></template>
 
-// ---- session selection ----
-function selectSession(id) {
-  if (S.selectedId === id) return;
-  S.selectedId = id;
-  S.detail = null;
-  refreshDetail(id);
-  renderSessionList();
-}
+<template id="tpl-alert"><li class="alert" data-testid="alert"><span class="lamp" aria-hidden="true"></span><p class="alert-msg"><strong class="alert-kind"></strong><span class="alert-txt"></span></p><button type="button" class="btn alert-open">Apri</button><button type="button" class="ibtn alert-dismiss" aria-label="Ignora allarme"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></li></template>
 
-function refreshDetail(id) {
-  fetch('/api/session?id=' + encodeURIComponent(id))
-    .then(r => r.json())
-    .then(d => {
-      S.detail = d;
-      renderSessionDetail();
-    })
-    .catch(() => {});
-}
+<template id="tpl-toast"><div class="toast" data-testid="toast"><span class="lamp" aria-hidden="true"></span><button type="button" class="toast-open"></button><button type="button" class="ibtn toast-close" aria-label="Chiudi notifica"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div></template>
 
-function deselectSession() {
-  S.selectedId = null;
-  S.detail = null;
-  closeLogStream();
-  $('#sessionDetail').style.display = 'none';
-  renderSessionList();
-  renderGlobalFeed();
-}
+<template id="tpl-proc"><tr role="row" data-testid="process-row"><td role="cell" data-label="PID" data-col="pid"></td><td role="cell" data-label="Tipo" data-col="type"></td><td role="cell" data-label="Stato" data-col="state"><span class="st"><span class="lamp" aria-hidden="true"></span><span class="st-txt"></span></span></td><td role="cell" data-label="CPU" data-col="cpu" class="num"></td><td role="cell" data-label="RAM" data-col="rss" class="num"></td><td role="cell" data-label="Età" data-col="age" class="num"></td><td role="cell" data-label="FD" data-col="fd" class="num"></td><td role="cell" data-label="Comando" data-col="cmd" class="cmd"></td></tr></template>
 
-// ---- session detail ----
-let detailTab = 'activity';
+<template id="tpl-lock"><tr role="row"><td role="cell" data-label="Sessione" data-col="session"></td><td role="cell" data-label="PID" data-col="pid" class="num"></td><td role="cell" data-label="Heartbeat" data-col="hb" class="num"></td><td role="cell" data-label="PID vivo" data-col="alive"></td><td role="cell" data-label="Stato" data-col="state"><span class="st"><span class="lamp" aria-hidden="true"></span><span class="st-txt"></span></span></td></tr></template>
 
-function renderSessionDetail() {
-  const d = S.detail;
-  if (!d) {
-    $('#sessionDetail').style.display = 'none';
-    $('#globalFeed').style.display = '';
-    return;
-  }
-  $('#globalFeed').style.display = 'none';
-  const sd = $('#sessionDetail');
-  sd.style.display = '';
-
-  sd.innerHTML = '' +
-    // header
-    '<div class="detail-header">' +
-      '<div class="top">' +
-        '<button onclick="deselectSession()" aria-label="Back to feed" style="background:none;border:none;color:var(--blue);cursor:pointer;padding:2px 6px;font-size:16px;font-family:inherit;" title="Back to feed">&larr;</button>' +
-        '<h2 title="' + escapeHtml(d.id) + '">' + escapeHtml(d.title) + '</h2>' +
-        statusBadgeHTML(d.status) +
-      '</div>' +
-      '<div class="meta">' +
-        '<span class="meta-item"><span class="label">dir</span> <span class="value">' + escapeHtml(d.directory) + '</span></span>' +
-        '<span class="meta-item"><span class="label">agent</span> <span class="value">' + escapeHtml(d.agent) + '</span></span>' +
-        (d.model ? '<span class="meta-item"><span class="label">model</span> <span class="value">' + escapeHtml(d.model) + '</span></span>' : '') +
-        '<span class="meta-item"><span class="label">input</span> <span class="value">' + fmtNum(d.tokensInput) + '</span></span>' +
-        '<span class="meta-item"><span class="label">output</span> <span class="value">' + fmtNum(d.tokensOutput) + '</span></span>' +
-        '<span class="meta-item"><span class="label">cache</span> <span class="value">' + d.cacheRate + '%</span></span>' +
-        '<span class="meta-item"><span class="label">cost</span> <span class="value" style="color:var(--yellow)">' + fmtCost(d.cost) + '</span></span>' +
-        '<span class="meta-item" style="margin-left:auto"><span class="label">' + relTime(d.timeUpdated) + ' ago</span></span>' +
-      '</div>' +
-    '</div>' +
-    // prompt section
-    (d.fullPrompt ? '<div class="detail-section"><h3>Prompt</h3>' +
-      '<div class="prompt-block collapsed" id="promptBlock">' + escapeHtml(d.fullPrompt) + '</div>' +
-      '<button class="expand-btn" onclick="togglePrompt()">Show more</button></div>'
-    : '') +
-    // todos section
-    (d.todos && d.todos.length > 0 ? '<div class="detail-section"><h3>Todos (' + d.todos.filter(t => t.status === 'completed').length + '/' + d.todos.length + ')</h3>' +
-      '<div class="todo-list">' + d.todos.map(t =>
-        '<div class="todo-item"><input type="checkbox" ' + (t.status === 'completed' ? 'checked' : '') + ' disabled>' +
-        '<span class="todo-text' + (t.status === 'completed' ? ' done' : '') + '">' + escapeHtml(t.content) + '</span></div>'
-      ).join('') + '</div></div>'
-    : '') +
-    // tabs
-    '<div class="tab-bar">' +
-      '<button class="tab-btn' + (detailTab === 'activity' ? ' active' : '') + '" onclick="switchDetailTab(\'activity\')">Activity</button>' +
-      '<button class="tab-btn' + (detailTab === 'log' ? ' active' : '') + '" onclick="switchDetailTab(\'log\')">Log</button>' +
-    '</div>' +
-    '<div class="tab-content' + (detailTab === 'activity' ? ' active' : '') + '" id="tabActivity">' +
-      renderTimelineHTML(d) +
-    '</div>' +
-    '<div class="tab-content' + (detailTab === 'log' ? ' active' : '') + '" id="tabLog">' +
-      '<div class="log-container" id="detailLogViewer" aria-live="polite"><div class="skeleton-line" style="width:70%"></div><div class="skeleton-line" style="width:85%"></div><div class="skeleton-line" style="width:60%"></div></div>' +
-      '<div class="log-status" id="detailLogStatus"></div>' +
-    '</div>';
-
-  if (detailTab === 'log') startDetailLogStream();
-}
-
-function togglePrompt() {
-  const block = $('#promptBlock');
-  const btn = block.nextElementSibling;
-  block.classList.toggle('collapsed');
-  btn.textContent = block.classList.contains('collapsed') ? 'Show more' : 'Show less';
-}
-
-function switchDetailTab(tab) {
-  detailTab = tab;
-  if (!S.detail) return;
-  if (tab === 'log') startDetailLogStream();
-  else closeLogStream();
-  renderSessionDetail();
-}
-
-function renderTimelineHTML(d) {
-  if (!d.messages || d.messages.length === 0) {
-    return '<div class="timeline"><div class="empty-state" style="padding:30px;font-size:12px;color:var(--text3)">No messages yet</div></div>';
-  }
-  let html = '<div class="timeline" id="timeline">';
-  for (const msg of d.messages) {
-    if (!msg.parts) continue;
-    for (const part of msg.parts) {
-      html += '<div class="tl-item">';
-      html += '<div class="tl-marker ' + part.type + '">' + markerIcon(part) + '</div>';
-      html += '<div class="tl-body">';
-      html += '<div class="tl-header">' +
-        '<span class="tl-role">' + (msg.role === 'user' ? 'You' : escapeHtml(msg.agent || 'assistant')) + '</span>' +
-        '<span class="tl-time">' + relTime(msg.timeCreated) + '</span></div>';
-
-      if (part.type === 'tool') {
-        const statusIcon = part.status === 'completed' ? '\u2714' : part.status === 'running' ? '<span class="spinner"></span>' : part.status === 'error' ? '\u2718' : '\u25CB';
-        const statusCls = part.status === 'completed' ? 'completed' : part.status === 'running' ? 'running' : part.status === 'error' ? 'error' : 'pending';
-        html += '<div class="tl-tool-line" role="button" tabindex="0" onclick="toggleToolOutput(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleToolOutput(this)}">' +
-          '<span class="tl-tool-icon">' + toolIcon(part.tool) + '</span>' +
-          '<span class="tl-tool-name">' + escapeHtml(part.tool) + '</span>' +
-          '<span class="tl-tool-input" title="' + escapeHtml(part.inputSummary) + '">' + escapeHtml(part.inputSummary) + '</span>' +
-          '<span class="tl-tool-status ' + statusCls + '">' + statusIcon + '</span>' +
-        '</div>' +
-        (part.output ? '<div class="tl-tool-output">' + escapeHtml(part.output) + '</div>' : '');
-      } else if (part.type === 'text') {
-        html += '<div class="tl-text-block collapsed">' + escapeHtml(part.text) + '</div>' +
-          '<button class="expand-btn" onclick="toggleText(this)">Show more</button>';
-      } else if (part.type === 'reasoning') {
-        html += '<div class="tl-reasoning-block" onclick="this.classList.toggle(\'expanded\')">' +
-          '<span style="color:var(--purple)">\u25B6 Reasoning</span>' +
-          '<div class="reasoning-text">' + escapeHtml(part.text || '') + '</div></div>';
-      } else if (part.type === 'step-finish') {
-        html += '<div class="tl-step-finish">Step finished' +
-          (part.tokens ? ' \u00b7 ' + fmtNum(part.tokens) + ' tokens' : '') +
-          (part.cost ? ' \u00b7 ' + fmtCost(part.cost) : '') + '</div>';
-      } else if (part.type === 'patch') {
-        const files = part.files || [];
-        html += '<div class="tl-patch">Patch: ' + files.map(f => escapeHtml(typeof f === 'string' ? f : f.path || '')).join(', ').slice(0, 200) + '</div>';
-      }
-
-      html += '</div></div>';
-    }
-  }
-  html += '</div>';
-  return html;
-}
-
-function markerIcon(part) {
-  if (part.type === 'tool') return '\u25B6';
-  if (part.type === 'text') return '\u2714';
-  if (part.type === 'reasoning') return '\u25B6';
-  if (part.type === 'step-finish') return '\u2714';
-  if (part.type === 'patch') return '\u2714';
-  return '?';
-}
-
-function toolIcon(t) {
-  const map = {
-    bash: '\u0024', write: '\u002B', edit: '\u007E', read: '\u2026',
-    glob: '\u002A', grep: '\u0023', websearch: '\u0040', webfetch: '\u2191',
-    task: '\u25C8', codegraph: '\u25C8',
-  };
-  return map[t] || '\u25C6';
-}
-
-function toggleToolOutput(el) {
-  const output = el.nextElementSibling;
-  if (output && output.classList.contains('tl-tool-output')) {
-    output.classList.toggle('open');
-  }
-}
-
-function toggleText(btn) {
-  const block = btn.previousElementSibling;
-  if (block && block.classList.contains('tl-text-block')) {
-    block.classList.toggle('collapsed');
-    btn.textContent = block.classList.contains('collapsed') ? 'Show more' : 'Show less';
-  }
-}
-
-// ---- log tab ----
-function startDetailLogStream() {
-  if (!S.selectedId) return;
-  closeLogStream();
-  S.logLines = [];
-  const viewer = $('#detailLogViewer');
-  const status = $('#detailLogStatus');
-  if (!viewer) return;
-  viewer.innerHTML = '';
-  status.textContent = 'Loading...';
-  // load archive first
-  fetch('/api/log-archive?sessionId=' + encodeURIComponent(S.selectedId) + '&maxLines=200')
-    .then(r => r.json())
-    .then(lines => {
-      for (const l of lines) appendDetailLogLine(l);
-      status.textContent = lines.length + ' lines loaded, streaming...';
-    })
-    .catch(() => status.textContent = 'Error loading logs');
-  // start stream
-  S.logES = new EventSource('/api/log-stream?sessionId=' + encodeURIComponent(S.selectedId));
-  S.logES.onmessage = e => {
-    try {
-      const d = JSON.parse(e.data);
-      if (d.type === 'connected') {
-        status.textContent = 'Stream connected';
-      } else if (d.type === 'line') {
-        appendDetailLogLine(d);
-        status.textContent = S.logLines.length + ' lines';
-      }
-    } catch {}
-  };
-  S.logES.onerror = () => {
-    status.textContent = 'Disconnected';
-  };
-}
-
-function appendDetailLogLine(parsed) {
-  const viewer = $('#detailLogViewer');
-  if (!viewer) return;
-  const line = document.createElement('div');
-  const lc = parsed.level ? 'level-' + parsed.level : '';
-  const ts = parsed.time ? parsed.time.slice(11, 19) : '';
-  line.className = 'log-line ' + lc;
-  line.innerHTML = '<span class="lt">' + escapeHtml(ts) + '</span>' + escapeHtml(parsed.message || '') + (parsed.rest ? ' ' + escapeHtml(parsed.rest) : '');
-  viewer.appendChild(line);
-  viewer.scrollTop = viewer.scrollHeight;
-  S.logLines.push(parsed);
-}
-
-function closeLogStream() {
-  if (S.logES) { S.logES.close(); S.logES = null; }
-}
-
-// ---- global feed ----
-function renderGlobalFeed() {
-  const el = $('#globalFeed');
-  if (S.selectedId) { el.style.display = 'none'; return; }
-  el.style.display = '';
-  const items = S.feed.slice(0, 100);
-  el.innerHTML = '' +
-    '<div class="feed-header">' +
-      '<h2>Global Activity Feed</h2>' +
-      '<span class="feed-count">' + items.length + ' events</span>' +
-    '</div>' +
-    '<div class="feed-list" aria-live="polite">' +
-      (items.length === 0
-        ? '<div class="empty-state" style="padding:40px;font-size:13px;color:var(--text3)">' +
-          '<span class="icon" aria-hidden="true">◆</span>' +
-          'Waiting for activity from opencode sessions…<br>' +
-          '<span style="font-size:11px;margin-top:4px;display:block">Start an opencode session, or select one from the sidebar to inspect it</span></div>'
-        : items.map(feedItemHTML).join('')) +
-    '</div>';
-}
-
-function feedItemHTML(item) {
-  const iconMap = {
-    tool: '\u25B6', text: '\u2714', reasoning: '\u25B6',
-    'step-finish': '\u2714', patch: '\u2714',
-  };
-  const icon = iconMap[item.partType] || '\u25C6';
-  const cls = 'feed-item feed-' + (item.partType || 'unknown');
-  return '<div class="' + cls + '" role="button" tabindex="0" onclick="selectSession(\'' + escapeHtml(item.sessionId) + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click()}">' +
-    '<span class="feed-icon">' + icon + '</span>' +
-    '<div class="feed-body">' +
-      '<span class="feed-session">' + escapeHtml(item.sessionTitle || shortId(item.sessionId)) + '</span> ' +
-      '<span class="feed-summary">' + escapeHtml(item.summary) + '</span>' +
-    '</div>' +
-    '<span class="feed-time">' + relTime(item.timeCreated) + '</span>' +
-  '</div>';
-}
-
-// ---- filter & search ----
-$('#filterRow').addEventListener('click', e => {
-  const btn = e.target.closest('.filter-btn');
-  if (!btn) return;
-  $$('#filterRow .filter-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
-  btn.classList.add('active');
-  btn.setAttribute('aria-pressed', 'true');
-  S.filter = btn.dataset.filter;
-  renderSessionList();
-});
-
-let searchDebounce = null;
-$('#searchInput').addEventListener('input', () => {
-  clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(() => {
-    S.search = $('#searchInput').value;
-    renderSessionList();
-  }, 200);
-});
-
-// ---- session list click delegation ----
-$('#sessionList').addEventListener('click', e => {
-  const card = e.target.closest('.session-card');
-  if (card) selectSession(card.dataset.id);
-});
-$('#sessionList').addEventListener('keydown', e => {
-  if (e.key !== 'Enter' && e.key !== ' ') return;
-  const card = e.target.closest('.session-card');
-  if (card) { e.preventDefault(); selectSession(card.dataset.id); }
-});
-
-// ---- init ----
-async function init() {
-  connectSSE();
-  try {
-    const r = await fetch('/api/overview');
-    const sessions = await r.json();
-    if (Array.isArray(sessions)) S.sessions = sessions;
-  } catch {}
-  try {
-    const r = await fetch('/api/activity?since=0');
-    const feed = await r.json();
-    if (Array.isArray(feed)) S.feed = feed.slice(-100).reverse();
-  } catch {}
-  try {
-    const r = await fetch('/api/processes');
-    S.processes = await r.json();
-  } catch {}
-  renderAll();
-  if (S.sessions.length === 0) {
-    // check if db is missing
-    fetch('/api/health')
-      .then(r => r.json())
-      .then(h => {
-        if (!h.db) {
-          $('#dbError').style.display = '';
-          $('#globalFeed').style.display = 'none';
-        }
-      })
-      .catch(() => {});
-  }
-  // periodic feed refresh
-  if (S.selectedId && S.detail) {
-    setInterval(() => { if (S.selectedId && S.detail) refreshDetail(S.selectedId); }, 5000);
-  }
-}
-init();
-</script>
+<template id="tpl-logl"><li class="logl" data-testid="log-line"><time class="logl-t"></time><span class="logl-lv"></span><span class="logl-body"><span class="logl-msg"></span><span class="logl-rest"></span></span></li></template>
 </body>
 </html>
