@@ -1,0 +1,14 @@
+{
+  "name": "opencode-dashboard",
+  "version": "2.0.0",
+  "description": "Real-time local dashboard for opencode v2 sessions",
+  "main": "server.js",
+  "scripts": {
+    "start": "NODE_NO_WARNINGS=1 node server.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "license": "MIT",
+  "private": true
+}
