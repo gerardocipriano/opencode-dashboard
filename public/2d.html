@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d1a">
+<title>Z Fighters · opencode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<link rel="stylesheet" href="2d.css">
+<script defer src="2d-data.js"></script>
+<script defer src="2d.js"></script>
+</head>
+<body>
+<header id="hud" class="hud">
+  <h1 class="hud-title">Z Fighters <span>· opencode</span></h1>
+  <div class="hud-bar">
+    <div id="hud-stats" class="hud-stats" aria-label="Conteggi sessioni"></div>
+    <div class="hud-meta">
+      <span id="conn" class="conn" role="status" aria-live="polite">CONNESSIONE…</span>
+      <a class="hud-link" href="/">Vista classica</a>
+    </div>
+  </div>
+  <div id="banner" class="banner">
+    <canvas id="banner-canvas" width="239" height="160" aria-hidden="true"></canvas>
+  </div>
+</header>
+
+<main id="zones" class="zones"></main>
+
+<noscript>
+  <p class="textbox">Questa vista richiede JavaScript. <a href="/">Apri la vista classica</a>.</p>
+</noscript>
+
+<div id="dialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-body" hidden>
+  <div class="dialog-box">
+    <div class="dialog-portrait">
+      <canvas id="dialog-portrait" width="32" height="32" aria-hidden="true"></canvas>
+    </div>
+    <div class="dialog-main">
+      <h2 id="dialog-title">Guerriero</h2>
+      <div id="dialog-body" class="dialog-body"></div>
+      <div class="dialog-actions">
+        <a id="dialog-open" class="dialog-btn" href="/">Apri nella vista classica</a>
+        <button id="dialog-close" class="dialog-btn" type="button">Chiudi</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="footer">
+  <p>Sprite: DBZ Legacy of Goku (GBA), rip di Grim, Lloyd_irving_1, Zidane_Blake via The Spriters Resource / spritedatabase.net. Uso personale.</p>
+</footer>
+</body>
+</html>

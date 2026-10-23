@@ -111,6 +111,7 @@ kbd{display:inline-block;min-width:24px;text-align:center;font:600 var(--fs-xs)/
 .ibtn{display:inline-grid;place-items:center;flex:none;width:var(--tap);height:var(--tap);color:var(--ph-hi);border:1px solid transparent;
   transition:background-color var(--t-fast),border-color var(--t-fast)}
 .ibtn:hover{background:var(--bg-2);border-color:var(--edge)}
+.ibtn-2d{font:700 var(--fs-xs)/1 var(--mono);letter-spacing:.08em;text-decoration:none}
 .seg{display:inline-flex;border:1px solid var(--rule-hi);border-radius:var(--r-1)}
 .seg-btn{min-height:var(--ctl-h);padding:0 10px;font:600 var(--fs-xs)/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ph-mid);
   border-left:1px solid var(--rule-hi);border-radius:0;transition:background-color var(--t-fast),color var(--t-fast)}
