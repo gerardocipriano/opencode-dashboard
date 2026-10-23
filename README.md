@@ -24,6 +24,7 @@ When you delegate coding work to opencode (from a terminal, from scripts or from
 
 - **Live tool stream.** Tool calls appear as `running` the moment they start and flip to `ok` or `error` when they finish, updated in place.
 - **Session status at a glance.** Working, recent, idle, failed, stuck, suspended and provider retry, each with a lamp shape and a text label (never colour alone).
+- **Session ordering.** Grouped by status by default; the *Stato/Tempo* toggle re-sorts every session in a single chronological list, newest activity first.
 - **Session detail.** Full transcript with prompts, reasoning, text, tool input and output, step tokens, todos, sub-agent sessions, real and estimated cost.
 - **Cost tracking.** Billed cost from the provider plus an estimate for free models, priced on their paid twin from the opencode model catalog.
 - **System panel.** opencode service status, `opencode` processes (zombies included), lock files and a raw log view.

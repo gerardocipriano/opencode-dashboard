@@ -22,6 +22,7 @@ const TXT = {
     title: 'Sessioni',
     search: 'Cerca: titolo, prompt, cartella, modello',
     sub: 'Sub-agent',
+    sort: { status: 'Stato', time: 'Tempo', byStatus: 'Ordina per stato', byTime: 'Ordina per tempo' },
   },
   filters: { all: 'Tutte', working: 'Lavoro', attention: 'Allarme', recent: 'Recenti', rest: 'Ferme' },
   groups: { working: 'Al lavoro', attention: 'Allarme', recent: 'Recenti', suspended: 'Sospese', idle: 'Inattive' },
@@ -1105,6 +1106,7 @@ const S = {
   filter: 'all',
   search: '',
   showSub: false,
+  sort: 'status',
 };
 
 const feed = { byId: new Map(), pending: new Map(), timer: 0, paused: false, newCount: 0 };
@@ -1438,24 +1440,38 @@ function renderSessions() {
     groups.get(key).push(s);
   }
 
+  const stamp = s => normTs(s.timeUpdated) || normTs(s.timeCreated);
+  const byNewest = (a, b) => stamp(b) - stamp(a);
+  const byOldest = (a, b) => normTs(a.timeCreated) - normTs(b.timeCreated);
+  const byCreatedNewest = (a, b) => normTs(b.timeCreated) - normTs(a.timeCreated);
+  const byUpdatedNewest = (a, b) => normTs(b.timeUpdated) - normTs(a.timeUpdated);
+
   const desired = [];
   let count = 0;
-  for (const key of GROUP_ORDER) {
-    const list = groups.get(key);
-    if (!list || !list.length) continue;
-    list.sort(key === 'working'
-      ? (a, b) => normTs(b.timeCreated) - normTs(a.timeCreated)
-      : (a, b) => normTs(b.timeUpdated) - normTs(a.timeUpdated));
-    const entries = [];
-    for (const s of list) {
-      entries.push({ kind: 's', s, child: isChildSession(s) });
-      const kids = nested.get(s.id) || [];
-      kids.sort((a, b) => normTs(a.timeCreated) - normTs(b.timeCreated));
-      for (const k of kids) entries.push({ kind: 's', s: k, child: true });
+
+  if (S.sort === 'time') {
+    // Chronological view: one flat list, newest activity first, children under their parent.
+    for (const s of rows.slice().sort(byNewest)) {
+      desired.push({ kind: 's', s, child: isChildSession(s) });
+      const kids = (nested.get(s.id) || []).slice().sort(byOldest);
+      for (const k of kids) desired.push({ kind: 's', s: k, child: true });
+      count += 1 + kids.length;
     }
-    if (S.filter === 'all') desired.push({ kind: 'g', key, n: entries.length });
-    for (const e of entries) desired.push(e);
-    count += entries.length;
+  } else {
+    for (const key of GROUP_ORDER) {
+      const list = groups.get(key);
+      if (!list || !list.length) continue;
+      list.sort(key === 'working' ? byCreatedNewest : byUpdatedNewest);
+      const entries = [];
+      for (const s of list) {
+        entries.push({ kind: 's', s, child: isChildSession(s) });
+        const kids = (nested.get(s.id) || []).slice().sort(byOldest);
+        for (const k of kids) entries.push({ kind: 's', s: k, child: true });
+      }
+      if (S.filter === 'all') desired.push({ kind: 'g', key, n: entries.length });
+      for (const e of entries) desired.push(e);
+      count += entries.length;
+    }
   }
 
   let i = 0;
@@ -3947,10 +3963,31 @@ function setShowSub(on) {
   savePrefs();
 }
 
+function paintSortToggle() {
+  const el = $('#sort-toggle');
+  if (!el) return;
+  const byTime = S.sort === 'time';
+  setAttr(el, 'aria-pressed', byTime ? 'true' : 'false');
+  setText(el, byTime ? TXT.sessions.sort.time : TXT.sessions.sort.status);
+  setAttr(el, 'title', byTime ? TXT.sessions.sort.byStatus : TXT.sessions.sort.byTime);
+}
+
+function setSortOrder(order) {
+  S.sort = order === 'time' ? 'time' : 'status';
+  paintSortToggle();
+  renderSessions();
+  savePrefs();
+}
+
+function toggleSortOrder() {
+  setSortOrder(S.sort === 'time' ? 'status' : 'time');
+}
+
 function savePrefs() {
   storeSet('ocmc:v1', {
     filter: S.filter,
     showSub: S.showSub,
+    sort: S.sort,
     feedFilter: feed.filter,
     steps: feed.steps,
     logLevel: L.level,
@@ -4274,6 +4311,9 @@ if (filtersEl) {
 const subToggleEl = $('#subagents-toggle');
 if (subToggleEl) subToggleEl.addEventListener('click', () => setShowSub(!S.showSub));
 
+const sortToggleEl = $('#sort-toggle');
+if (sortToggleEl) sortToggleEl.addEventListener('click', toggleSortOrder);
+
 const logSegEl = $('#panel-log .seg');
 if (logSegEl) {
   logSegEl.addEventListener('click', e => {
@@ -4377,6 +4417,7 @@ function paintStoredPrefs(prefs) {
   const p = prefs && typeof prefs === 'object' ? prefs : {};
   if (FILTER_TEST[p.filter]) S.filter = p.filter;
   if (typeof p.showSub === 'boolean') S.showSub = p.showSub;
+  if (p.sort === 'time' || p.sort === 'status') S.sort = p.sort;
   if (p.feedFilter === 'all' || p.feedFilter === 'tool' || p.feedFilter === 'problems') feed.filter = p.feedFilter;
   if (typeof p.steps === 'boolean') feed.steps = p.steps;
   if (p.logLevel === 'all' || p.logLevel === 'warn') L.level = p.logLevel;
@@ -4385,6 +4426,7 @@ function paintStoredPrefs(prefs) {
     setAttr(chip, 'aria-pressed', chip.dataset.filter === S.filter ? 'true' : 'false');
   }
   setAttr($('#subagents-toggle'), 'aria-pressed', S.showSub ? 'true' : 'false');
+  paintSortToggle();
   for (const btn of $$('.seg-btn[data-feed-filter]')) {
     setAttr(btn, 'aria-pressed', btn.dataset.feedFilter === feed.filter ? 'true' : 'false');
   }
