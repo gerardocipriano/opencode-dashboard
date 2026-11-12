@@ -49,6 +49,45 @@ test('parseLaunch: expands the session id convention and ignores heredocs', () =
   assert.strictEqual(r.dir, '/w');
 });
 
+test('parseLaunch: commands that only mention "opencode run" are not launches', () => {
+  const mentions = [
+    'grep -rn "opencode run" file',
+    'pgrep -f "opencode run"',
+    "ps aux | grep 'opencode run'",
+    'echo "now I will use opencode run --title x"',
+    'printf "%s\\n" "opencode run --title x"',
+    "jq -r 'select(.x|test(\"opencode run\"))' t.jsonl",
+    "python3 -c 'print(\"opencode run\" in open(\"f\").read())'",
+    'cat <<EOF\nopencode run --title doc\nEOF',
+    "cat > doc.md <<'EOF'\nuse opencode run --title doc\nEOF",
+    'rg "opencode run" ~/.claude | head',
+    'pkill -f "opencode run"',
+    'awk \'/opencode run/ {print}\' log',
+    'sed -n "/opencode run/p" log',
+    'node -e "console.log(\'opencode run\')"',
+    'grep opencode run file',
+  ];
+  for (const c of mentions) assert.strictEqual(parseLaunch(c), null, c);
+});
+
+test('parseLaunch: true positives in command position', () => {
+  assert.strictEqual(parseLaunch('opencode run --title t "x"').title, 't');
+  assert.strictEqual(parseLaunch('cd /d && opencode run --title t').dir, '/d');
+  const n = parseLaunch('nohup ~/.opencode/bin/opencode run --title t "x" > log 2>&1 &');
+  assert.strictEqual(n.title, 't');
+  assert.strictEqual(parseLaunch('nohup $HOME/.opencode/bin/opencode run --title t &').title, 't');
+  assert.strictEqual(parseLaunch('/abs/path/opencode run --title t').title, 't');
+  assert.strictEqual(parseLaunch('FOO=1 timeout 600 opencode run --title t').title, 't');
+  assert.strictEqual(parseLaunch('env A=b setsid stdbuf -oL opencode run --title t').title, 't');
+  const m = parseLaunch('echo start\ncd /m\nopencode run --title second');
+  assert.deepStrictEqual([m.title, m.dir], ['second', '/m']);
+  const s = parseLaunch('(cd /sub && opencode run --title t)');
+  assert.deepStrictEqual([s.title, s.dir], ['t', '/sub']);
+  assert.strictEqual(parseLaunch('opencode run --title p "x" | tee log').title, 'p');
+  assert.strictEqual(parseLaunch('x=$(opencode run --title sub)').title, 'sub');
+  assert.strictEqual(parseLaunch('sh -c "opencode run --title shc"').title, 'shc');
+});
+
 // ---- status ----
 
 function stateFrom(lines) {
