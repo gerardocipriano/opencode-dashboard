@@ -8,12 +8,16 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { DatabaseSync } = require('node:sqlite');
 const os = require('os');
+const { createCollector } = require('./lib/claude');
 
 const PORT = parseInt(process.env.PORT) || 3456;
 const DB_PATH = path.join(os.homedir(), '.local/share/opencode/opencode.db');
 const LOG_PATH = path.join(os.homedir(), '.local/share/opencode/log/opencode.log');
 const LOCKS_DIR = path.join(os.homedir(), '.local/state/opencode/locks');
 const PUBLIC_DIR = process.env.PUBLIC_DIR || path.join(__dirname, 'public');
+
+const CLAUDE_DIR = process.env.CLAUDE_DIR || path.join(os.homedir(), '.claude');
+const claudeCollector = createCollector({ dir: CLAUDE_DIR, home: os.homedir(), enabled: process.env.OC_CLAUDE !== '0' });
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -449,6 +453,40 @@ const SESSION_COLS = `id, parent_id, title, directory, agent, model, cost,
   tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write,
   time_created, time_updated, time_suspended, idle_outcome`;
 
+// ---- Claude Code sessions (lib/claude.js) ----
+
+let procsMemo = { t: 0, v: [] };
+function getProcessesCached() {
+  if (Date.now() - procsMemo.t > 2000) procsMemo = { t: Date.now(), v: getProcesses() };
+  return procsMemo.v;
+}
+
+function claudeOcRows(shorts, since) {
+  const d = getDb();
+  if (!d) return [];
+  const likes = shorts.map(() => 'title LIKE ?').join(' OR ');
+  return d.prepare(`
+    SELECT id, title, directory, time_created AS timeCreated FROM ${SESSION_TABLE}
+    WHERE time_created > ?${likes ? ' OR ' + likes : ''} ORDER BY time_created DESC LIMIT 2000
+  `).all(since, ...shorts.map(s => '%-' + s));
+}
+
+function claudeOcIsLive(id) {
+  const d = getDb();
+  if (!d) return false;
+  const r = d.prepare(`SELECT ${SESSION_COLS} FROM ${SESSION_TABLE} WHERE id = ?`).get(id);
+  if (!r) return false;
+  return ['working', 'active', 'stuck'].includes(sessionStatus(r, getLastMessages(id), getLocks()));
+}
+
+function getClaudeSnapshot() {
+  try {
+    return claudeCollector.snapshot({ ocRows: claudeOcRows, isLive: claudeOcIsLive, procs: getProcessesCached });
+  } catch { return { claude: [], byOc: new Map() }; }
+}
+
+function getClaude() { return getClaudeSnapshot().claude; }
+
 function getOverview() {
   try {
     const d = getDb();
@@ -458,10 +496,12 @@ function getOverview() {
       WHERE time_archived IS NULL ORDER BY time_updated DESC LIMIT 50
     `).all();
     const locks = getLocks();
+    const byOc = getClaudeSnapshot().byOc;
     return rows.map(r => {
       const msgs = getLastMessages(r.id);
       return {
         ...sessionFields(r, msgs),
+        claude: byOc.get(r.id) || null,
         firstUserPrompt: getFirstUserPrompt(r.id),
         lastActivity: getLastActivity(r.id, msgs),
         todos: getTodos(r.id),
@@ -563,6 +603,7 @@ function getSessionDetail(sessionId) {
     const children = d.prepare(`SELECT id, title FROM ${SESSION_TABLE} WHERE parent_id = ? ORDER BY time_created ASC`).all(sessionId);
     return {
       ...base,
+      claude: getClaudeSnapshot().byOc.get(sessionId) || null,
       estRates: est?.rates ?? null,
       totalTokens: ti + base.tokensOutput + base.tokensReasoning + tcr + base.tokensCacheWrite,
       cacheRate: ti > 0 ? ((tcr / ti) * 100).toFixed(1) : '0.0',
@@ -653,11 +694,13 @@ function handleStream(req, res) {
   };
   send('connected', { ok: true });
   const pushOverview = () => {
+    const processes = getProcessesCached();
     send('overview', {
       sessions: getOverview(),
+      claude: getClaude(),
       cost24h: getCost24h(),
       estCost24h: getEstCost24h(),
-      processes: getProcesses(),
+      processes,
       service: getService(),
       timestamp: Date.now(),
     });
@@ -831,6 +874,11 @@ const server = http.createServer((req, res) => {
     const since = parseInt(url.searchParams.get('since')) || 0;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(getActivity(since)));
+    return;
+  }
+  if (pathname === '/api/claude') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(getClaude()));
     return;
   }
   if (pathname === '/api/stream') {

@@ -85,6 +85,7 @@
     s.timeCreated = num(s.timeCreated);
     s.timeUpdated = num(s.timeUpdated);
     s.status = str(s.status) || 'idle';
+    s.claude = normalizeClaudeLink(s.claude);
     s.lastActivity = la
       ? {
           type: str(la.type) || 'unknown',
@@ -94,6 +95,58 @@
         }
       : null;
     return s;
+  }
+
+  function normalizeClaudeLink(link) {
+    if (!link || typeof link !== 'object') return null;
+    var id = str(link.id);
+    if (!id) return null;
+    return { id: id, short: str(link.short) || id.slice(0, 8) };
+  }
+
+  function normalizeClaude(input) {
+    if (!input || typeof input !== 'object') return null;
+    var c = {};
+    c.id = str(input.id);
+    if (!c.id) return null;
+    c.short = str(input.short) || c.id.slice(0, 8);
+    c.pid = input.pid == null ? null : num(input.pid);
+    c.kind = input.kind === 'bg' ? 'bg' : 'interactive';
+    c.directory = str(input.directory);
+    c.project = str(input.project) || c.short;
+    c.model = typeof input.model === 'string' && input.model ? input.model : null;
+    c.status = input.status === 'working' || input.status === 'waiting' ? input.status : 'idle';
+    var act = input.activity && typeof input.activity === 'object' ? input.activity : {};
+    c.activity = {
+      type: act.type === 'tool' || act.type === 'thinking' || act.type === 'text' ? act.type : null,
+      tool: typeof act.tool === 'string' && act.tool ? act.tool : null,
+    };
+    c.startedAt = num(input.startedAt);
+    c.updatedAt = num(input.updatedAt);
+    c.subagents = Array.isArray(input.subagents)
+      ? input.subagents
+          .filter(function (x) { return x && typeof x === 'object'; })
+          .map(function (x, i) {
+            return {
+              id: str(x.id) || 'sub-' + i,
+              type: str(x.type) || 'agent',
+              state: x.state === 'done' ? 'done' : 'working',
+            };
+          })
+      : [];
+    c.delegations = Array.isArray(input.delegations)
+      ? input.delegations
+          .filter(function (x) { return x && typeof x === 'object'; })
+          .map(function (x) {
+            return {
+              sessionId: x.sessionId == null ? null : String(x.sessionId),
+              title: typeof x.title === 'string' ? x.title : null,
+              startedAt: num(x.startedAt),
+              live: !!x.live,
+            };
+          })
+      : [];
+    return c;
   }
 
   function normalizeOverview(input) {
@@ -112,6 +165,10 @@
       pid: service.pid == null ? null : num(service.pid),
       alive: !!service.alive,
     };
+    data.claudeSupported = Array.isArray(input.claude);
+    data.claude = data.claudeSupported
+      ? input.claude.map(normalizeClaude).filter(Boolean)
+      : [];
     data.timestamp = num(data.timestamp) || Date.now();
     return data;
   }
@@ -233,6 +290,71 @@
     };
   }
 
+  var CLAUDE_A = 'a1b2c3d4-0000-4000-8000-00000000000a';
+  var CLAUDE_B = 'b2c3d4e5-0000-4000-8000-00000000000b';
+  var CLAUDE_C = 'c3d4e5f6-0000-4000-8000-00000000000c';
+
+  function createClaude(T0) {
+    return [
+      {
+        id: CLAUDE_A,
+        short: CLAUDE_A.slice(0, 8),
+        pid: 5101,
+        kind: 'interactive',
+        directory: '~/code/orion-api',
+        project: 'orion-api',
+        model: 'claude-fable-5',
+        status: 'working',
+        activity: { type: 'tool', tool: 'Bash' },
+        startedAt: T0 - 50 * 60e3,
+        updatedAt: T0 - 2e3,
+        subagents: [
+          { id: 'sa1', type: 'Explore', state: 'working' },
+          { id: 'sa2', type: 'general-purpose', state: 'working' },
+        ],
+        delegations: [
+          { sessionId: 's-work-1', title: 'Refactor del modulo billing', startedAt: T0 - 40 * 60e3, live: true },
+          { sessionId: 's-work-2', title: 'Confronto dei listini dei provider LLM', startedAt: T0 - 25 * 60e3, live: true },
+          { sessionId: 's-stuck-1', title: 'Migrazione Terraform al nuovo provider', startedAt: T0 - 2 * 3600e3, live: true },
+        ],
+      },
+      {
+        id: CLAUDE_B,
+        short: CLAUDE_B.slice(0, 8),
+        pid: 5102,
+        kind: 'interactive',
+        directory: '~/code/lumen-web',
+        project: 'lumen-web',
+        model: 'claude-opus-4-1',
+        status: 'waiting',
+        activity: { type: null, tool: null },
+        startedAt: T0 - 3 * 3600e3,
+        updatedAt: T0 - 90e3,
+        subagents: [],
+        delegations: [
+          { sessionId: 's-idle-1', title: 'Setup della pipeline CI', startedAt: T0 - 9 * 3600e3, live: false },
+          { sessionId: 's-fail-1', title: 'Portfolio con effetto CRT', startedAt: T0 - 3 * 3600e3, live: false },
+          { sessionId: null, title: 'oc-ricerca-fonti', startedAt: T0 - 60e3, live: true },
+        ],
+      },
+      {
+        id: CLAUDE_C,
+        short: CLAUDE_C.slice(0, 8),
+        pid: 5103,
+        kind: 'bg',
+        directory: '~/code/nightly-jobs',
+        project: 'nightly-jobs',
+        model: 'claude-sonnet-4-5',
+        status: 'idle',
+        activity: { type: null, tool: null },
+        startedAt: T0 - 8 * 3600e3,
+        updatedAt: T0 - 40 * 60e3,
+        subagents: [],
+        delegations: [],
+      },
+    ];
+  }
+
   function createSessions(T0) {
     var LONG_TITLE = '/' + 'a'.repeat(199);
 
@@ -258,7 +380,7 @@
       return Object.assign(base, over);
     }
 
-    return [
+    var list = [
       mk({
         id: 's-work-1',
         title: 'Refactor del modulo billing',
@@ -540,7 +662,53 @@
         status: 'suspended',
         lastActivity: { type: 'idle', status: 'done', summary: 'Sospesa in attesa di essere ripresa.' },
       }),
+      mk({
+        id: 's-plan-1',
+        title: "Piano di rientro dal vecchio hosting",
+        directory: '/home/u/code/migration',
+        agent: 'plan',
+        model: 'gpt-4.1',
+        provider: 'openai',
+        cost: 0.011,
+        estCost: 0.011,
+        tokensInput: 9100,
+        tokensOutput: 1700,
+        todos: { done: 0, total: 3 },
+        timeCreated: T0 - 70 * 60e3,
+        timeUpdated: T0 - 6 * 60e3,
+        status: 'active',
+        lastActivity: { type: 'idle', status: 'done', summary: 'Piano pronto, in attesa di te' },
+      }),
+      mk({
+        id: 's-del-1',
+        title: 'oc-controllo-licenze',
+        directory: '/home/u/code/compliance',
+        agent: 'delegate',
+        model: 'gpt-4.1-mini',
+        provider: 'openai',
+        cost: 0.005,
+        estCost: 0.005,
+        tokensInput: 6100,
+        tokensOutput: 800,
+        todos: { done: 2, total: 2 },
+        timeCreated: T0 - 4 * 3600e3,
+        timeUpdated: T0 - 2 * 3600e3,
+        status: 'idle',
+        lastActivity: { type: 'idle', status: 'done', summary: 'Turno concluso' },
+      }),
     ];
+    var links = {
+      's-work-1': CLAUDE_A,
+      's-work-2': CLAUDE_A,
+      's-stuck-1': CLAUDE_A,
+      's-idle-1': CLAUDE_B,
+      's-fail-1': CLAUDE_B,
+    };
+    list.forEach(function (s) {
+      var id = links[s.id];
+      s.claude = id ? { id: id, short: id.slice(0, 8) } : null;
+    });
+    return list;
   }
 
   function createProcesses(T0) {
@@ -619,7 +787,9 @@
     var still = hasParam('still');
     var T0 = Date.now();
     var rnd = mulberry32(0x5eed1234);
+    var noClaude = hasParam('noclaude');
     var sessions = createSessions(T0);
+    var claude = createClaude(T0);
     var processes = createProcesses(T0);
     var service = { version: '1.14.2', url: 'http://127.0.0.1:4096', pid: 4242, alive: true };
     var partSeq = 0;
@@ -642,7 +812,7 @@
         cost += sessions[i].cost;
         est += sessions[i].estCost;
       }
-      return {
+      var snap = {
         sessions: clone(sessions),
         cost24h: Math.round(cost * 1e4) / 1e4,
         estCost24h: Math.round(est * 1e4) / 1e4,
@@ -650,11 +820,17 @@
         service: clone(service),
         timestamp: Date.now(),
       };
+      if (noClaude) {
+        snap.sessions.forEach(function (x) { delete x.claude; });
+      } else {
+        snap.claude = clone(claude);
+      }
+      return snap;
     }
 
     function emitOverview() {
       if (stopped) return;
-      safe(onOverview, snapshot());
+      safe(onOverview, normalizeOverview(snapshot()));
     }
 
     function workingSessions() {
@@ -708,8 +884,9 @@
       var working = [];
       var idle = [];
       for (var i = 0; i < sessions.length; i++) {
+        if (sessions[i].claude) continue;
         if (sessions[i].status === 'working') working.push(sessions[i]);
-        else if (sessions[i].status === 'idle') idle.push(sessions[i]);
+        else if (sessions[i].status === 'idle' && sessions[i].agent !== 'delegate') idle.push(sessions[i]);
       }
 
       if (idle.length) {
@@ -744,6 +921,107 @@
       timers = [];
     }
 
+
+    // ---- copione Claude: una transizione di ogni tipo entro ~40 s ----
+
+    var CLAUDE_TOOLS = [
+      { type: 'tool', tool: 'Bash' },
+      { type: 'tool', tool: 'Edit' },
+      { type: 'tool', tool: 'Read' },
+      { type: 'tool', tool: 'Agent' },
+      { type: 'tool', tool: 'WebSearch' },
+      { type: 'thinking', tool: null },
+      { type: 'text', tool: null },
+    ];
+    var toolIndex = 0;
+
+    function cycleClaudeTool() {
+      var a = claude[0];
+      if (!a || a.status !== 'working') return;
+      var next = CLAUDE_TOOLS[toolIndex % CLAUDE_TOOLS.length];
+      toolIndex += 1;
+      a.activity = { type: next.type, tool: next.tool };
+      a.updatedAt = Date.now();
+    }
+
+    function byId(list, id) {
+      for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+      return null;
+    }
+
+    function newDelegate(id, title, owner, status, tool) {
+      var now = Date.now();
+      sessions.push({
+        id: id, parentId: null, title: title, directory: '/home/u/code/orion-api', agent: 'build',
+        model: 'gpt-4.1-mini', provider: 'openai', cost: 0.001, estCost: 0.001,
+        tokensInput: 900, tokensOutput: 120, todos: { done: 0, total: 2 },
+        timeCreated: now, timeUpdated: now, status: status,
+        lastActivity: { type: 'tool', tool: tool, status: 'running', summary: 'avvio' },
+        claude: { id: owner.id, short: owner.short },
+      });
+    }
+
+    function setStatus(id, status, summary) {
+      var s = byId(sessions, id);
+      if (!s) return;
+      s.status = status;
+      s.timeUpdated = Date.now();
+      s.lastActivity = { type: status === 'failed' ? 'error' : 'idle', status: status, summary: summary };
+    }
+
+    var SCRIPT = [
+      // 6 s: nuova delegazione di A + nuovo sub-agente
+      [6000, function () {
+        var a = claude[0];
+        newDelegate('s-new-1', 'oc-audit-dipendenze', a, 'working', 'read');
+        a.delegations.push({ sessionId: 's-new-1', title: 'oc-audit-dipendenze', startedAt: Date.now(), live: true });
+        a.subagents.push({ id: 'sa3', type: 'Plan', state: 'working' });
+        a.activity = { type: 'tool', tool: 'Agent' };
+      }],
+      // 11 s: un sub-agente finisce
+      [11000, function () { claude[0].subagents[0].state = 'done'; }],
+      // 15 s: una delegazione viva si completa
+      [15000, function () {
+        setStatus('s-work-2', 'idle', 'Turno concluso');
+        claude[0].delegations[1].live = false;
+      }],
+      // 21 s: la nuova delegazione si blocca
+      [21000, function () { setStatus('s-new-1', 'stuck', 'Bloccata su una dipendenza'); }],
+      // 27 s: ... e poi fallisce
+      [27000, function () {
+        setStatus('s-new-1', 'failed', 'Errore: registro non raggiungibile');
+        claude[0].delegations[3].live = false;
+      }],
+      // 31 s: A attende l'utente
+      [31000, function () {
+        claude[0].status = 'waiting';
+        claude[0].activity = { type: null, tool: null };
+      }],
+      // 35 s: B riprende e la delega non collegata trova la sua sessione
+      [35000, function () {
+        var b = claude[1];
+        b.status = 'working';
+        b.activity = { type: 'tool', tool: 'Grep' };
+        newDelegate('s-new-2', 'oc-ricerca-fonti', b, 'working', 'websearch');
+        b.delegations[2].sessionId = 's-new-2';
+      }],
+      // 39 s: il processo bg C si sveglia
+      [39000, function () {
+        claude[2].status = 'working';
+        claude[2].activity = { type: 'thinking', tool: null };
+      }],
+    ];
+
+    function runScript() {
+      SCRIPT.forEach(function (step) {
+        timers.push(setTimeout(function () {
+          if (stopped) return;
+          step[1]();
+          emitOverview();
+        }, step[0]));
+      });
+    }
+
     setConn('connecting');
 
     firstTimer = setTimeout(function () {
@@ -753,7 +1031,11 @@
       emitOverview();
       if (still) return;
       timers.push(setInterval(emitPart, MOCK_PART_MS));
-      timers.push(setInterval(emitOverview, MOCK_OVERVIEW_MS));
+      timers.push(setInterval(function () {
+        cycleClaudeTool();
+        emitOverview();
+      }, MOCK_OVERVIEW_MS));
+      if (!noClaude) runScript();
       timers.push(setInterval(transition, MOCK_TRANSITION_MS));
     }, 30);
 
@@ -768,6 +1050,6 @@
   }
 
   if (typeof window !== 'undefined') {
-    window.OC2D_DATA = { start: start };
+    window.OC2D_DATA = { start: start, normalizeOverview: normalizeOverview };
   }
 })();

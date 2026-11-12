@@ -227,6 +227,7 @@ textarea {
 }
 
 .banner {
+  position: relative;
   width: 100%;
   max-width: 560px;
   margin: 0 auto;
@@ -243,6 +244,102 @@ textarea {
   aspect-ratio: 239 / 160;
   image-rendering: pixelated;
   background: #000;
+}
+
+/* Freezer sul trono: hotspot, targhetta, invito e fumetto */
+#frieza-btn {
+  left: 30%;
+  top: 44%;
+  width: 18%;
+  height: 40%;
+  transform: translate(-50%, -50%);
+}
+
+.frieza-tag {
+  position: absolute;
+  z-index: 4;
+  left: 30%;
+  top: 66%;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  transform: translate(-50%, 0);
+  pointer-events: none;
+}
+
+#frieza-plate {
+  position: static;
+  max-width: none;
+  padding: 2px 4px;
+  font-size: 8px;
+  line-height: 1.6;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+@media (max-width: 410px) {
+  #frieza-plate {
+    font-size: 7px;
+  }
+}
+
+@media (max-width: 365px) {
+  #frieza-plate {
+    font-size: 6px;
+  }
+}
+
+.frieza-hint {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 2px 5px;
+  transform: translateY(-50%);
+  background: var(--gba-navy);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  font-size: 8px;
+  line-height: 1.6;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-shadow: 1px 1px 0 #000;
+  animation: frieza-hint-blink 1s ease-in-out infinite;
+}
+
+.frieza-hint::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 4px solid currentColor;
+}
+
+@keyframes frieza-hint-blink {
+  0%,
+  100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+#frieza-bubble {
+  left: 30%;
+  top: 18%;
+  max-width: 70%;
+  transform: translate(-30%, -100%);
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+#frieza-bubble::after,
+#frieza-bubble::before {
+  left: 30%;
 }
 
 /* ------------------------------------------------------------
@@ -516,6 +613,90 @@ textarea {
 }
 
 /* ------------------------------------------------------------
+   Sala comandi: sessioni Claude e missioni
+   ------------------------------------------------------------ */
+
+.zone-command .zone-panels {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+}
+
+@media (min-width: 900px) {
+  .zone-command {
+    grid-column: 1 / -1;
+  }
+}
+
+.zone-command .zone-head {
+  border-color: var(--gold);
+}
+
+/* segnaposto con lo stesso rapporto d'aspetto di un pannello: nessun salto */
+.panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 219 / 160;
+  padding: 16px;
+  background: linear-gradient(#22409c, #101a58 65%, #0a1240);
+  border: 2px dashed var(--ink-dim);
+  border-radius: 4px;
+  color: var(--ink-dim);
+  font-size: 10px;
+  line-height: 1.8;
+  text-align: center;
+}
+
+.panel-new {
+  animation: panel-fade 0.45s ease-out;
+}
+
+@keyframes panel-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mission-strip {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 3px 6px;
+  overflow: hidden;
+  background: #9aa3c7;
+  border-bottom: 2px solid #000;
+  color: #0b0d1a;
+  font-size: 8px;
+  line-height: 1.6;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: none;
+  pointer-events: none;
+}
+
+.m-badge {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border: 1px solid #000;
+  vertical-align: baseline;
+}
+
+.sub-more {
+  position: absolute;
+  z-index: 4;
+  padding: 1px 4px;
+  background: var(--gba-navy);
+  border: 1px solid var(--ink);
+  color: var(--gold);
+  font-size: 8px;
+  line-height: 1.5;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------
    Dialog stile GBA
    ------------------------------------------------------------ */
 
@@ -611,6 +792,70 @@ textarea {
   color: var(--gold);
 }
 
+/* Menu di dialogo stile RPG (Freezer) */
+.talk-menu {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.talk-menu li {
+  margin: 0 0 6px;
+}
+
+.talk-menu li:last-child {
+  margin-bottom: 0;
+}
+
+.talk-opt {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 6px 8px 6px 20px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--ink);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: left;
+  text-shadow: 1px 1px 0 #000;
+  cursor: pointer;
+}
+
+.talk-opt::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  margin-top: -4px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--gold);
+  opacity: 0;
+}
+
+.talk-opt:hover,
+.talk-opt:focus-visible {
+  background: var(--gba-navy);
+  border-color: var(--ink);
+}
+
+.talk-opt:hover::before,
+.talk-opt:focus-visible::before {
+  opacity: 1;
+}
+
+.talk-opt:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
 .dialog-actions {
   display: flex;
   flex-wrap: wrap;
@@ -701,5 +946,9 @@ textarea {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .frieza-hint {
+    animation: none !important;
   }
 }

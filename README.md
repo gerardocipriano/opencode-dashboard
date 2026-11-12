@@ -29,6 +29,7 @@ When you delegate coding work to opencode (from a terminal, from scripts or from
 - **Cost tracking.** Billed cost from the provider plus an estimate for free models, priced on their paid twin from the opencode model catalog.
 - **System panel.** opencode service status, `opencode` processes (zombies included), lock files and a raw log view.
 - **Stall alerts.** Detects runs that never created a session, sessions silent for too long and orphaned locks. Also exposed as an SSE endpoint you can watch from scripts.
+- **Claude Code sessions.** Live Claude Code sessions appear next to opencode's, with model, coarse status, current tool name and sub-agents, and each one is linked to the opencode sessions it delegated to.
 - **Keyboard first, mobile ready.** Shortcuts for everything, a bottom navigation on phones, WCAG 2.2 AA contrast, reduced-motion support.
 
 <table>
@@ -37,6 +38,10 @@ When you delegate coding work to opencode (from a terminal, from scripts or from
 <td width="32%"><img src="docs/mobile.png" alt="Mobile layout"></td>
 </tr>
 </table>
+
+## 2D view
+
+`/2d.html` is an alternative, animated view of the same data: every session is a character on a map. Claude Code sessions appear as characters with their sub-agents, linked to the opencode sessions they delegated to. Append `?mock=1` for a demo mode on fake data, with no opencode or Claude Code needed.
 
 ## Quick start
 
@@ -80,6 +85,8 @@ systemctl --user enable --now opencode-dashboard.service
 | `PUBLIC_DIR` | `./public` | Directory with the front-end files |
 | `OC_STALL_SECS` | `180` | Seconds of silence before a running session raises a stall alert |
 | `OC_BIRTH_SECS` | `150` | Seconds an `opencode run` process may live without creating a session |
+| `OC_CLAUDE` | `1` | Set to `0` to turn off everything about Claude Code sessions |
+| `CLAUDE_DIR` | `~/.claude` | Claude Code data directory |
 
 ## How it works
 
@@ -96,15 +103,34 @@ opencode service ──writes──▶ opencode.db (SQLite, WAL)
 
 Sessions created by opencode v1 are still readable: the detail view falls back to the legacy `message` and `part` tables.
 
+### Claude Code sessions
+
+Claude Code launches opencode through its Bash tool, and opencode records nothing that points back, so the link is rebuilt from Claude's side. The collector (`lib/claude.js`) reads, read-only:
+
+- `~/.claude/sessions/<pid>.json` for the live sessions (a file counts only if the pid exists and its start time matches; stale files are ignored). The `*.key` files next to them are never opened.
+- `~/.claude/projects/<project>/<session>.jsonl`, the transcript, incrementally from the last byte offset (the last 2 MB on first sight), for the model, the pending tool call and the `opencode run` launches.
+- `.../<session>/subagents/agent-*.meta.json` for sub-agent type and state. Launches made by sub-agents count for the parent session.
+
+A launch is a Bash call containing `opencode run`, with its `--title`, its `cd <dir> &&` prefix or `--dir`, and whether it resumes a session. It is joined to an opencode session in this order, each opencode session used once:
+
+1. `--session <id>` names the session outright.
+2. A title ending in `-<first 8 characters of the Claude session id>` links directly, whenever it ran. To opt in, launch with `--title "oc-<task>-${CLAUDE_CODE_SESSION_ID:0:8}"`.
+3. Same title, and the opencode session created from 5 s before to 120 s after the launch. With several candidates the one in the launch directory wins, then the nearest in time; a live `opencode run` process that carries the same `CLAUDE_CODE_SESSION_ID` and title serves as the time reference.
+
+Each opencode session in the API gets `claude: {id, short}` when a link exists, otherwise `null`. A delegation that cannot be matched is still listed, with `sessionId: null`.
+
+Deliberately not exposed: prompts, message text, tool inputs and outputs (including file paths), the session name and sub-agent descriptions. What leaves the server is ids, pid, kind, directory, project name, model, a coarse status (`working`, `waiting`, `idle`), tool names, sub-agent type and state, timestamps and delegation titles.
+
 ## API
 
 | Endpoint | Type | Description |
 |---|---|---|
-| `/api/stream` | SSE | `overview` snapshots and live `part` items (upsert by `id`) |
-| `/api/overview` | JSON | Latest 50 sessions with status, last activity, todos and costs |
+| `/api/stream` | SSE | `overview` snapshots (sessions, `claude`, processes, service, cost) and live `part` items (upsert by `id`) |
+| `/api/overview` | JSON | Latest 50 sessions with status, last activity, todos, costs and the `claude` link |
 | `/api/session?id=` | JSON | Full session detail and transcript |
 | `/api/activity?since=` | JSON | Activity items updated after a timestamp (last 6 h) |
 | `/api/alerts` | SSE | `alert` events for stalls and stuck locks; `?once=1` returns JSON |
+| `/api/claude` | JSON | Live Claude Code sessions with sub-agents and linked delegations (`[]` when `OC_CLAUDE=0`) |
 | `/api/processes` | JSON | Running `opencode` processes |
 | `/api/service` | JSON | opencode background service status |
 | `/api/locks` | JSON | Lock files and their heartbeat |
@@ -135,13 +161,22 @@ curl -sN http://localhost:3456/api/alerts | grep --line-buffered '^data:'
 
 Append `?mock=1` to the URL to run the UI on deterministic fake data, without opencode. `?mock=1&still=1` starts with the live tick paused. In mock mode `window.__ocmock` lets you emit parts, drop the connection, change a session status or send a burst of events, which is what the acceptance tests use.
 
+Run the tests with `npm test` (`node:test`, no dependencies). They build fake Claude and opencode data in a temp directory, so they never touch your real sessions.
+
 Project layout:
 
 ```
-server.js          HTTP server, SQLite reader, SSE streams, alerts
-public/index.html  markup and <template> elements
-public/styles.css  design tokens and components
-public/app.js      state, SSE client, rendering
+server.js            HTTP server, SQLite reader, SSE streams, alerts
+lib/claude.js        Claude Code session collector, status and delegation join
+test/                unit and integration tests
+public/index.html    markup and <template> elements
+public/styles.css    design tokens and components
+public/app.js        state, SSE client, rendering
+public/2d.html       2D view: markup
+public/2d.css        2D view: styles
+public/2d.js         2D view: scenes and rendering
+public/2d-data.js    2D view: data adapter and mock data
+public/2d/           2D view: image assets
 ```
 
 The visual direction, phosphor green on near black with an amber accent, uses Big Shoulders Display and IBM Plex Mono from Google Fonts.
@@ -150,6 +185,8 @@ The visual direction, phosphor green on near black with an amber accent, uses Bi
 
 - Read-only: the dashboard never writes to the opencode database and cannot start or stop sessions.
 - Linux first. Process details (state, memory, age, open files) come from `/proc`, so on macOS the process panel shows only PID, CPU and command.
+- Linking Claude Code sessions to opencode sessions is a heuristic. Two identical titles launched within seconds in the same directory can be swapped, and a launch that never created a session can claim a neighbour's. Use the `-<session id prefix>` title suffix for exact links.
+- The server has no authentication and listens on all interfaces. Claude data is limited to the fields listed above, but run it only on a trusted network.
 - The log view is global, because opencode v2 log lines rarely carry a session id.
 
 ## License

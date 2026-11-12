@@ -4,7 +4,8 @@
   "description": "Real-time local dashboard for opencode v2 sessions",
   "main": "server.js",
   "scripts": {
-    "start": "NODE_NO_WARNINGS=1 node server.js"
+    "start": "NODE_NO_WARNINGS=1 node server.js",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=22.5"

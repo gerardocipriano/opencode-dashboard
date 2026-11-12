@@ -33,8 +33,23 @@
     bubbles: 'Bubbles'
   };
 
-  var CHAR_MAIN = ['goku', 'vegeta', 'ginyu', 'frieza'];
+  // Cast: goku e' riservato a Claude, frieza al trono (servizio). Restano
+  // vegeta e ginyu per le sessioni opencode, gohan/bubbles per i compagni.
+  var CHAR_CLAUDE = 'goku';
   var CHAR_SUB = ['gohan', 'bubbles'];
+  var ROLE_CHAR = { delegate: 'ginyu', plan: 'vegeta', build: 'vegeta' };
+  var ROLE_COLOR = { delegate: '#d58bff', plan: '#5fd8ff', build: '#ffb347' };
+  var ROLE_LABEL = { delegate: 'truppa delegata', plan: 'stratega', build: 'operaio' };
+  var MISSION_COLORS = ['#ff4f8b', '#19e0ff', '#ffe03a', '#8dff4a', '#b983ff', '#ff9a2e'];
+  var LIVE_STATUS = { working: true, active: true, stuck: true };
+  var CMD_CFG = { status: 'command', title: 'SALA COMANDI · CLAUDE', bgs: ['throne-empty'], cap: 0, command: true };
+  var CLAUDE_X = 0.22;
+  var CLAUDE_Y = 0.80;
+  var DELEG_SLOTS = [[0.60, 0.66], [0.60, 0.92], [0.84, 0.66], [0.84, 0.92]];
+  var SUB_VISIBLE = 4;
+  var HOLD_MS = 4200;
+  var CHARGE_MS = 900;
+  var PROJ_MS = 700;
 
   var FALLBACKS = {
     stand: ['stand'],
@@ -59,8 +74,13 @@
   var PANEL_SLOTS = 6;
   var BUBBLE_MS = 3000;
   var TYPE_MS = 20;
+  var SERVICE_ID = '__service__';
+  var SPEECH_MS = 5000;
+  var SPEECH_IDLE_MS = 15000;
+  var SPEECH_MAX = 4;
 
   var GLYPHS = {
+    '?': ['111', '001', '011', '000', '010'],
     '!': ['01', '01', '01', '00', '01'],
     'z': ['111', '001', '010', '100', '111']
   };
@@ -88,6 +108,31 @@
   var openId = null;
   var lastFocus = null;
   var typing = null;
+
+  // Freezer parla: stato del fumetto e baseline degli stati sessione
+  var lastStatusById = new Map();
+  var hasBaseline = false;
+  var speech = {
+    current: null,
+    until: 0,
+    queue: [],
+    lastAt: Date.now()
+  };
+  var ambientIndex = 0;
+  var connPrev = '';
+
+  // Claude e missioni
+  var missions = [];
+  var missionById = new Map();
+  var prevClaude = new Map();
+  var prevSessionIds = new Set();
+  var prevLinked = new Set();
+  var pendingFx = [];
+  var holds = new Map();
+  var projectiles = [];
+  var eventLog = [];
+  var highlightId = null;
+  var frameStats = { n: 0, sum: 0, max: 0 };
 
   var flashCanvas = document.createElement('canvas');
   flashCanvas.width = 64;
@@ -121,9 +166,38 @@
     return h >>> 0;
   }
 
-  function charFor(id, companion) {
-    var list = companion ? CHAR_SUB : CHAR_MAIN;
-    return list[fnv1a(String(id)) % list.length];
+  function kidFor(type, id) {
+    var t = String(type || '').toLowerCase();
+    if (/explor|search|research|web/.test(t)) return 'bubbles';
+    if (/plan|general|review|code|test/.test(t)) return 'gohan';
+    return CHAR_SUB[fnv1a(String(id)) % CHAR_SUB.length];
+  }
+
+  function roleOf(s) {
+    if (s.claude || s.agent === 'delegate' || /^oc-/.test(s.title || '')) return 'delegate';
+    if (s.agent === 'plan') return 'plan';
+    return 'build';
+  }
+
+  function missionColor(id) {
+    return MISSION_COLORS[fnv1a(String(id)) % MISSION_COLORS.length];
+  }
+
+  function modelLabel(model) {
+    var m = String(model || '').toLowerCase();
+    if (!m) return '—';
+    var names = ['fable', 'opus', 'sonnet', 'haiku'];
+    for (var i = 0; i < names.length; i += 1) {
+      if (m.indexOf(names[i]) >= 0) return names[i];
+    }
+    return truncate(m.replace(/^claude[-_]?/, ''), 8);
+  }
+
+  function logEvent(type, data) {
+    var e = { t: Date.now(), type: type };
+    if (data) Object.keys(data).forEach(function (k) { e[k] = data[k]; });
+    eventLog.push(e);
+    if (eventLog.length > 300) eventLog.shift();
   }
 
   function timeAgo(ts) {
@@ -190,8 +264,9 @@
     el.setAttribute('data-state', info.ds);
   }
 
-  function addStat(container, text, value) {
+  function addStat(container, text, value, key) {
     var span = document.createElement('span');
+    if (key) span.setAttribute('data-stat', key);
     span.appendChild(document.createTextNode(text));
     if (value !== undefined) {
       var strong = document.createElement('strong');
@@ -230,6 +305,22 @@
       });
     }
 
+    if (overview.claudeSupported) {
+      var cw = 0;
+      var cwait = 0;
+      var live = 0;
+      missions.forEach(function (m) {
+        if (m.c.status === 'working') cw += 1;
+        else if (m.c.status === 'waiting') cwait += 1;
+        live += m.live.length + m.ghosts.length;
+      });
+      if (missions.length > 0 || live > 0) {
+        addStat(stats, 'claude al lavoro', cw, 'claude-working');
+        addStat(stats, 'claude in attesa', cwait, 'claude-waiting');
+        addStat(stats, 'deleghe vive', live, 'deleg-live');
+      }
+    }
+
     var costText = 'costo 24h ' + money(overview.cost24h);
     if (num(overview.estCost24h) > num(overview.cost24h) + 0.0001) {
       costText += ' · ~' + money(overview.estCost24h);
@@ -237,7 +328,7 @@
     addStat(stats, costText);
 
     var version = overview.service && overview.service.version ? overview.service.version : '—';
-    addStat(stats, 'v' + version);
+    addStat(stats, 'servizio v' + version);
   }
 
   function drawBanner() {
@@ -260,6 +351,398 @@
     if (!img) return;
     bannerCtx.clearRect(0, 0, bannerCanvas.width, bannerCanvas.height);
     bannerCtx.drawImage(img, 0, 0, bannerCanvas.width, bannerCanvas.height);
+  }
+
+  // ---- missioni: sessioni Claude e relative deleghe ----
+
+  function subFid(claudeId, subId) {
+    return 's:' + claudeId + ':' + subId;
+  }
+
+  function isLiveDeleg(s) {
+    return !!(LIVE_STATUS[s.status] || holds.has(s.id));
+  }
+
+  function buildMissions() {
+    var list = [];
+    var byId = new Map();
+    var sessions = (overview && overview.sessions) || [];
+    var claudes = (overview && overview.claude) || [];
+
+    claudes.forEach(function (c) {
+      var m = {
+        id: c.id,
+        c: c,
+        fid: 'c:' + c.id,
+        color: missionColor(c.id),
+        project: c.project || c.short,
+        live: [],
+        done: [],
+        ghosts: [],
+        total: 0,
+        titles: [],
+        isLive: false
+      };
+      var seen = new Set();
+      function addSession(s, listed) {
+        if (seen.has(s.id)) return;
+        seen.add(s.id);
+        m.total += 1;
+        m.titles.push({ title: s.title || 'Senza titolo', live: isLiveDeleg(s) });
+        var h = holds.get(s.id);
+        var kid = !!(s.parentId && s.parentId !== s.id && lastSessionsById.has(s.parentId));
+        if (kid) return;
+        if (LIVE_STATUS[s.status] || (h && h.claudeId === c.id)) m.live.push(s);
+        else m.done.push(s);
+      }
+      c.delegations.forEach(function (d) {
+        var s = d.sessionId ? lastSessionsById.get(d.sessionId) : null;
+        if (s) {
+          addSession(s, true);
+        } else {
+          m.total += 1;
+          m.titles.push({ title: d.title || 'Senza titolo', live: !!d.live, unlinked: true });
+          if (d.live) m.ghosts.push(d);
+        }
+      });
+      sessions.forEach(function (s) {
+        if (s.claude && s.claude.id === c.id) addSession(s, false);
+      });
+      m.live.sort(function (a, b) {
+        if (num(a.timeCreated) !== num(b.timeCreated)) return num(a.timeCreated) - num(b.timeCreated);
+        return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+      });
+      m.isLive = c.status !== 'idle' || m.live.length > 0 || m.ghosts.length > 0;
+      list.push(m);
+      byId.set(c.id, m);
+    });
+
+    list.sort(function (a, b) {
+      if (a.c.startedAt !== b.c.startedAt) return a.c.startedAt - b.c.startedAt;
+      return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+    });
+    missions = list;
+    missionById = byId;
+    return list;
+  }
+
+  function claudeState(c) {
+    if (c.status === 'working') return 'lavora';
+    if (c.status === 'waiting') return c.kind === 'bg' ? 'in attesa' : 'attende te';
+    return 'a riposo';
+  }
+
+  function claudeActivity(c) {
+    var a = c.activity || {};
+    if (a.type === 'tool') return a.tool || 'strumento';
+    if (a.type === 'thinking') return 'pensa';
+    if (a.type === 'text') return 'scrive';
+    return '—';
+  }
+
+  function missionOf(f) {
+    return f && f.missionId ? missionById.get(f.missionId) || null : null;
+  }
+
+  // ---- Freezer: fumetto, commenti e targhetta ----
+
+  function serviceAlive() {
+    return !!(overview && overview.service && overview.service.alive);
+  }
+
+  function countStatus(status) {
+    var n = 0;
+    ((overview && overview.sessions) || []).forEach(function (s) {
+      if (s && s.status === status) n += 1;
+    });
+    return n;
+  }
+
+  function pushSpeech(text, type) {
+    if (!text) return;
+    var key = type || 'ambient';
+    for (var i = 0; i < speech.queue.length; i += 1) {
+      if (speech.queue[i].type === key) return;
+    }
+    if (speech.queue.length >= SPEECH_MAX) return;
+    speech.queue.push({ text: text, type: key });
+  }
+
+  function renderSpeech() {
+    var el = $('frieza-bubble');
+    if (!el) return;
+    if (speech.current && !openId) {
+      if (el.textContent !== speech.current.text) el.textContent = speech.current.text;
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+    }
+  }
+
+  function startSpeech(text, now) {
+    speech.current = { text: text };
+    speech.until = now + SPEECH_MS;
+    speech.lastAt = now;
+    renderSpeech();
+  }
+
+  function ambientPhrase() {
+    if (!overview) return null;
+    var working = countStatus('working');
+    var active = countStatus('active');
+    var svc = overview.service || {};
+
+    for (var i = 0; i < 4; i += 1) {
+      var pick = ambientIndex % 4;
+      ambientIndex += 1;
+
+      if (pick === 0) {
+        return working > 0
+          ? 'Ho ' + working + ' guerrieri in combattimento.'
+          : 'Nessuno combatte. Che noia.';
+      }
+      if (pick === 1) {
+        return 'Ultime 24 ore: ' + money(overview.cost24h) + ' reali, circa ' +
+          money(overview.estCost24h) + ' a listino.';
+      }
+      if (pick === 2) {
+        var version = svc.version || '—';
+        var pid = svc.pid == null ? '—' : svc.pid;
+        return 'Servizio v' + version + ', PID ' + pid + '. Tutto sotto controllo.';
+      }
+      if (active > 0) {
+        return active + ' sessioni ti aspettano. Non farle attendere.';
+      }
+    }
+    return null;
+  }
+
+  function speechTick() {
+    var now = Date.now();
+
+    if (speech.current && now >= speech.until) {
+      speech.current = null;
+      speech.lastAt = now;
+    }
+
+    if (!openId && !speech.current && speech.queue.length) {
+      startSpeech(speech.queue.shift().text, now);
+      return;
+    }
+
+    if (!openId && !speech.current && !speech.queue.length && overview &&
+        now - speech.lastAt >= SPEECH_IDLE_MS) {
+      var phrase = ambientPhrase();
+      if (phrase) {
+        startSpeech(phrase, now);
+        return;
+      }
+      speech.lastAt = now;
+    }
+
+    renderSpeech();
+  }
+
+  function claudeSnapshot(data) {
+    var map = new Map();
+    (data.claude || []).forEach(function (c) {
+      var subs = new Map();
+      c.subagents.forEach(function (x) { subs.set(x.id, x.state); });
+      var keys = new Set();
+      c.delegations.forEach(function (d) { keys.add(delegKey(d)); });
+      map.set(c.id, { status: c.status, kind: c.kind, subs: subs, keys: keys, project: c.project || c.short });
+    });
+    return map;
+  }
+
+  function delegKey(d) {
+    return d.sessionId ? d.sessionId : 'u:' + d.startedAt + ':' + (d.title || '');
+  }
+
+  function noteOverviewEvents(data) {
+    var next = new Map();
+    var sessions = data.sessions || [];
+    var now = Date.now();
+    var nextClaude = claudeSnapshot(data);
+    var nextIds = new Set();
+    var nextLinked = new Set();
+    sessions.forEach(function (s) {
+      nextIds.add(s.id);
+      if (s.claude) nextLinked.add(s.id);
+    });
+
+    if (!hasBaseline) {
+      sessions.forEach(function (s) { next.set(s.id, s.status); });
+      lastStatusById = next;
+      prevClaude = nextClaude;
+      prevSessionIds = nextIds;
+      prevLinked = nextLinked;
+      hasBaseline = true;
+      return;
+    }
+
+    var byId = new Map();
+    sessions.forEach(function (s) { byId.set(s.id, s); });
+    var started = new Set();
+
+    // Claude: attesa, sub-agenti, nuove deleghe
+    (data.claude || []).forEach(function (c) {
+      var before = prevClaude.get(c.id);
+      var project = c.project || c.short;
+      if (!before) return;
+
+      if (c.status === 'waiting' && before.status !== 'waiting' && c.kind !== 'bg') {
+        logEvent('claude-wait', { claude: c.id });
+        pushSpeech('Claude di ' + truncate(project, 18) + ' aspetta te.', 'evt:cwait');
+      }
+
+      c.subagents.forEach(function (sub) {
+        var was = before.subs.get(sub.id);
+        if (was === undefined) {
+          logEvent('sub-start', { claude: c.id, sub: sub.id });
+          pendingFx.push({ kind: 'sub-start', claude: c.id, fid: subFid(c.id, sub.id) });
+          pushSpeech('Claude chiama rinforzi: un ' + truncate(sub.type, 16) + ' entra in campo.', 'evt:csub');
+        } else if (was !== sub.state && sub.state === 'done') {
+          logEvent('sub-done', { claude: c.id, sub: sub.id });
+        }
+      });
+
+      c.delegations.forEach(function (d) {
+        var key = delegKey(d);
+        if (before.keys.has(key)) return;
+        if (d.sessionId) started.add(d.sessionId);
+        var title = truncate(d.title || (byId.get(d.sessionId) || {}).title || 'una missione', 24);
+        logEvent('deleg-start', { claude: c.id, session: d.sessionId, title: d.title });
+        pendingFx.push({ kind: 'deleg-start', claude: c.id, session: d.sessionId, fresh: d.sessionId && !prevSessionIds.has(d.sessionId) });
+        pushSpeech('Claude manda in campo ' + title + '.', 'evt:cstart');
+      });
+    });
+
+    // sessioni opencode collegate a Claude in un secondo momento
+    sessions.forEach(function (s) {
+      if (!s.claude || prevLinked.has(s.id) || started.has(s.id)) return;
+      if (!prevClaude.has(s.claude.id)) return;
+      started.add(s.id);
+      logEvent('deleg-start', { claude: s.claude.id, session: s.id, title: s.title });
+      pendingFx.push({ kind: 'deleg-start', claude: s.claude.id, session: s.id, fresh: !prevSessionIds.has(s.id) });
+    });
+
+    sessions.forEach(function (s) {
+      next.set(s.id, s.status);
+      var before = lastStatusById.get(s.id);
+      if (before === s.status) return;
+
+      var title = truncate(s.title || 'Senza titolo', 28);
+
+      if (s.claude) {
+        if (before === undefined) return;
+        var owner = s.claude.id;
+        var wasLive = !!LIVE_STATUS[before];
+        if (s.status === 'idle' && before === 'working') {
+          holds.set(s.id, { claudeId: owner, start: now, until: now + HOLD_MS, status: 'idle' });
+          logEvent('deleg-done', { claude: owner, session: s.id, title: s.title });
+          pendingFx.push({ kind: 'deleg-done', claude: owner, session: s.id });
+          pushSpeech(title + ' torna da Claude: missione compiuta.', 'evt:cdone');
+          return;
+        }
+        if (s.status === 'failed' && wasLive) {
+          holds.set(s.id, { claudeId: owner, start: now, until: now + HOLD_MS, status: 'failed' });
+          logEvent('deleg-fail', { claude: owner, session: s.id, title: s.title });
+          pendingFx.push({ kind: 'deleg-fail', claude: owner, session: s.id });
+          pushSpeech('La missione ' + title + ' è fallita. Claude non sarà contento.', 'evt:cfail');
+          return;
+        }
+        if (s.status === 'stuck' && before !== 'stuck') {
+          logEvent('deleg-stuck', { claude: owner, session: s.id, title: s.title });
+          pendingFx.push({ kind: 'deleg-stuck', claude: owner, session: s.id });
+          pushSpeech(title + ' è bloccata. Claude aspetta.', 'evt:cstuck');
+          return;
+        }
+        return;
+      }
+
+      if (s.status === 'working') {
+        pushSpeech(title + ' scende in campo.', 'evt:working');
+      } else if (s.status === 'failed') {
+        pushSpeech(title + ' è caduta. Portatela nella vasca.', 'evt:failed');
+      } else if (s.status === 'active') {
+        pushSpeech(title + ' ha finito il turno. Tocca a te.', 'evt:active');
+      } else if (s.status === 'stuck') {
+        pushSpeech(title + ' è bloccata nel vulcano.', 'evt:stuck');
+      }
+    });
+
+    lastStatusById = next;
+    prevClaude = nextClaude;
+    prevSessionIds = nextIds;
+    prevLinked = nextLinked;
+  }
+
+  // effetti coreografici: applicati dopo il layout, quando i guerrieri esistono
+  function applyFx() {
+    if (!pendingFx.length) return;
+    var now = Date.now();
+    var list = pendingFx;
+    pendingFx = [];
+
+    list.forEach(function (fx) {
+      var m = missionById.get(fx.claude);
+      var cf = m ? fighters.get(m.fid) : null;
+      var target = fx.session ? fighters.get(fx.session) : (fx.fid ? fighters.get(fx.fid) : null);
+
+      if (fx.kind === 'deleg-start') {
+        if (cf) cf.chargeUntil = now + CHARGE_MS;
+        if (target) {
+          var travel = reducedMotion ? 0 : PROJ_MS;
+          if (fx.fresh) target.appearAt = now + travel;
+          target.flashUntil = now + travel + 450;
+          target.powerUntil = now + travel + 650;
+          target.ringAt = now + travel;
+          if (cf && m && target.inMission && !reducedMotion) {
+            projectiles.push({ from: cf.id, to: target.id, start: now, dur: PROJ_MS, color: m.color });
+          }
+        }
+      } else if (fx.kind === 'sub-start') {
+        if (cf) cf.chargeUntil = now + CHARGE_MS;
+        if (target) {
+          target.appearAt = now;
+          target.flashUntil = now + 450;
+          target.powerUntil = now + 500;
+          target.ringAt = now;
+        }
+      } else if (fx.kind === 'deleg-done') {
+        if (target) {
+          target.bubble = { text: 'Missione compiuta: ' + truncate(target.session.title || '', 22), until: now + HOLD_MS - 300 };
+        }
+      } else if (fx.kind === 'deleg-fail') {
+        if (cf) cf.alertUntil = now + 5000;
+        if (target) {
+          target.bubble = { text: 'Missione fallita: ' + truncate(target.session.title || '', 22), until: now + HOLD_MS - 300 };
+        }
+      } else if (fx.kind === 'deleg-stuck') {
+        if (cf) cf.alertUntil = now + 5000;
+      }
+    });
+  }
+
+  function handleConn(state) {
+    var was = connPrev;
+    connPrev = state;
+    setConn(state);
+
+    if (state === 'offline' && was !== 'offline') {
+      pushSpeech('Ho perso il contatto con la mia astronave.', 'conn:offline');
+    } else if (state === 'live' && was === 'offline') {
+      pushSpeech('Contatto ristabilito.', 'conn:live');
+    }
+  }
+
+  function updateFriezaTag() {
+    var plate = $('frieza-plate');
+    var hint = $('frieza-hint');
+    var alive = serviceAlive();
+    if (plate) plate.textContent = alive ? 'FREEZER · servizio opencode' : 'TRONO VUOTO · servizio giù';
+    if (hint) hint.hidden = !alive;
   }
 
   // ---- caricamento asset ----
@@ -313,7 +796,7 @@
     if (zs) return zs;
 
     var el = document.createElement('section');
-    el.className = 'zone';
+    el.className = cfg.command ? 'zone zone-command' : 'zone';
     el.setAttribute('data-zone', cfg.status);
 
     var head = document.createElement('div');
@@ -342,7 +825,10 @@
     }
 
     var zonesEl = $('zones');
-    if (zonesEl) zonesEl.appendChild(el);
+    if (zonesEl) {
+      if (cfg.command) zonesEl.insertBefore(el, zonesEl.firstChild);
+      else zonesEl.appendChild(el);
+    }
 
     zs = {
       cfg: cfg,
@@ -452,43 +938,190 @@
     node.hpFill = fill;
   }
 
+  function newFighter(id, kind) {
+    return {
+      id: id,
+      kind: kind,
+      session: null,
+      char: 'goku',
+      role: '',
+      label: '',
+      hash: fnv1a(id),
+      isCompanion: false,
+      parentId: null,
+      anim: '',
+      animStart: 0,
+      actionSig: '',
+      actionStart: Date.now(),
+      x: 0,
+      y: 0,
+      drawX: 0,
+      drawY: 0,
+      flashUntil: 0,
+      bubble: null,
+      dir: 'R',
+      node: null,
+      size: { w: 16, h: 32 },
+      placed: false,
+      inMission: false,
+      missionId: null,
+      appearAt: 0,
+      powerUntil: 0,
+      ringAt: 0,
+      chargeUntil: 0,
+      alertUntil: 0,
+      hold: null,
+      scale: 1
+    };
+  }
+
   function ensureFighter(session) {
     var f = fighters.get(session.id);
     if (!f) {
-      var companion = !!(session.parentId && session.parentId !== session.id && lastSessionsById.has(session.parentId));
-      f = {
-        id: session.id,
-        session: session,
-        char: charFor(session.id, companion),
-        isCompanion: companion,
-        parentId: session.parentId || null,
-        anim: '',
-        animStart: 0,
-        actionSig: '',
-        actionStart: Date.now(),
-        x: 0,
-        y: 0,
-        drawX: 0,
-        drawY: 0,
-        flashUntil: 0,
-        bubble: null,
-        dir: 'R',
-        node: null,
-        size: { w: 16, h: 32 },
-        placed: false
-      };
+      f = newFighter(session.id, 'oc');
       fighters.set(session.id, f);
     }
+    var companion = !!(session.parentId && session.parentId !== session.id && lastSessionsById.has(session.parentId));
     f.session = session;
+    f.kind = 'oc';
+    if (companion) {
+      f.char = kidFor(session.agent, session.id);
+      f.role = 'kid';
+      f.scale = f.hash % 3 === 0 ? 1.125 : 1;
+    } else {
+      f.role = roleOf(session);
+      f.char = ROLE_CHAR[f.role];
+      f.scale = 1;
+    }
+    f.label = CHAR_LABEL[f.char] || 'Guerriero';
+    f.missionId = session.claude ? session.claude.id : null;
+    f.inMission = false;
+    f.hold = holds.get(session.id) || null;
     return f;
+  }
+
+  function ensureClaudeFighter(m) {
+    var f = fighters.get(m.fid);
+    if (!f) {
+      f = newFighter(m.fid, 'claude');
+      fighters.set(m.fid, f);
+    }
+    var c = m.c;
+    var act = c.activity || {};
+    var la = null;
+    if (act.type === 'tool') la = { type: 'tool', tool: mapClaudeTool(act.tool), summary: act.tool || '' };
+    else if (act.type === 'thinking') la = { type: 'reasoning', summary: '' };
+    else if (act.type === 'text') la = { type: 'text', summary: '' };
+    f.session = {
+      id: m.fid,
+      title: m.project,
+      status: c.status === 'working' ? 'working' : (c.status === 'waiting' ? 'active' : 'idle'),
+      lastActivity: la,
+      todos: { done: 0, total: 0 }
+    };
+    f.char = CHAR_CLAUDE;
+    f.role = 'claude';
+    f.label = 'Claude';
+    f.missionId = m.id;
+    f.mission = m;
+    f.isCompanion = false;
+    f.parentId = null;
+    f.inMission = true;
+    return f;
+  }
+
+  function ensureSubFighter(m, sub, parentFid) {
+    var id = subFid(m.id, sub.id);
+    var f = fighters.get(id);
+    if (!f) {
+      f = newFighter(id, 'sub');
+      fighters.set(id, f);
+    }
+    f.session = {
+      id: id,
+      title: sub.type,
+      status: sub.state === 'done' ? 'idle' : 'working',
+      lastActivity: null,
+      todos: { done: 0, total: 0 },
+      subType: sub.type
+    };
+    f.char = kidFor(sub.type, sub.id);
+    f.role = 'sub';
+    f.label = CHAR_LABEL[f.char];
+    f.scale = f.hash % 3 === 0 ? 1.125 : 1;
+    f.missionId = m.id;
+    f.isCompanion = true;
+    f.parentId = parentFid;
+    f.inMission = true;
+    return f;
+  }
+
+  function mapClaudeTool(tool) {
+    var t = String(tool || '').toLowerCase();
+    if (t === 'bash') return 'bash';
+    if (t === 'edit' || t === 'write' || t === 'multiedit' || t === 'notebookedit') return 'edit';
+    if (t === 'read' || t === 'grep' || t === 'glob' || t === 'ls') return 'read';
+    if (t === 'agent' || t === 'task') return 'task';
+    if (t === 'webfetch' || t === 'websearch') return 'websearch';
+    return t;
+  }
+
+  function ariaFor(f) {
+    var s = f.session;
+    var m = missionOf(f);
+    if (f.kind === 'claude') {
+      return 'Claude — ' + f.mission.project + ' — ' + claudeState(f.mission.c);
+    }
+    if (f.kind === 'sub') {
+      var mm = missionOf(f);
+      return 'Sub-agente ' + s.title + ' di Claude' + (mm ? ' · ' + mm.project : '') + ' — ' + (s.status === 'working' ? 'in corso' : 'finito');
+    }
+    var base = f.label + ' — ' + (s.title || 'Senza titolo') + ' — ' + statusLabel(s.status);
+    if (f.missionId) base += ' — delegata da Claude' + (m ? ' · ' + m.project : '');
+    return base;
+  }
+
+  function setPlate(f, node) {
+    var s = f.session;
+    var m = missionOf(f);
+    var text = f.kind === 'claude'
+      ? f.mission.project + ' · ' + modelLabel(f.mission.c.model)
+      : truncate(s.title || 'Senza titolo', 18);
+    var color = f.missionId ? (m ? m.color : missionColor(f.missionId)) : '';
+    var key = [text, color, f.kind, f.role].join('|');
+    if (node.plateKey === key) return;
+    node.plateKey = key;
+    var name = node.name;
+    name.textContent = '';
+    if (color) {
+      var badge = document.createElement('i');
+      badge.className = 'm-badge';
+      badge.style.background = color;
+      name.appendChild(badge);
+    }
+    name.appendChild(document.createTextNode(text));
+    if (f.missionId) name.setAttribute('data-mission', f.missionId);
+    else name.removeAttribute('data-mission');
+    if (f.kind === 'claude') {
+      name.style.borderColor = color;
+      name.style.borderWidth = '2px';
+      name.style.borderLeftColor = color;
+    } else {
+      name.style.borderColor = '';
+      name.style.borderWidth = '';
+      name.style.borderLeftColor = ROLE_COLOR[f.role] || '';
+      name.style.borderLeftWidth = ROLE_COLOR[f.role] ? '3px' : '';
+    }
   }
 
   function applyNodeMeta(f, overlay) {
     var node = ensureNode(f);
     var s = f.session;
-    var label = CHAR_LABEL[f.char] || 'Guerriero';
-    node.btn.setAttribute('aria-label', label + ' — ' + (s.title || 'Senza titolo') + ' — ' + statusLabel(s.status));
-    node.name.textContent = truncate(s.title || 'Senza titolo', 18);
+    node.btn.setAttribute('data-kind', f.kind);
+    if (f.missionId) node.btn.setAttribute('data-mission', f.missionId);
+    else node.btn.removeAttribute('data-mission');
+    node.btn.setAttribute('aria-label', ariaFor(f));
+    setPlate(f, node);
     // i compagni non hanno targhetta: coprirebbe quella del genitore
     node.name.hidden = f.isCompanion;
 
@@ -602,6 +1235,7 @@
           if (!kid) return;
           kid.isCompanion = true;
           kid.parentId = parent.id;
+          kid.missionId = parent.missionId;
           placeKid(kid, parent, kidIndex, w, h);
           kid.placed = true;
           panel.fighters.push(kid);
@@ -628,6 +1262,188 @@
     }
   }
 
+  function ensureCmdPanel(zs, key) {
+    var p = ensurePanel(zs, key, 'throne-empty');
+    if (!p.strip) {
+      p.strip = document.createElement('div');
+      p.strip.className = 'mission-strip';
+      p.el.appendChild(p.strip);
+      p.moreEl = document.createElement('div');
+      p.moreEl.className = 'sub-more';
+      p.moreEl.hidden = true;
+      p.overlay.appendChild(p.moreEl);
+      p.el.classList.add('panel-new');
+    }
+    p.mission = null;
+    p.ghosts = [];
+    p.anchor = null;
+    return p;
+  }
+
+  function attachKids(parent, kidsByRoot, panel, w, h) {
+    var list = kidsByRoot.get(parent.id) || [];
+    list.forEach(function (kidSession, kidIndex) {
+      var kid = fighters.get(kidSession.id);
+      if (!kid) return;
+      kid.isCompanion = true;
+      kid.parentId = parent.id;
+      kid.inMission = parent.inMission;
+      kid.missionId = parent.missionId;
+      placeKid(kid, parent, kidIndex, w, h);
+      if (parent.inMission) {
+        kid.x = clamp(parent.x + 18 + kidIndex * 12, 12, w - 12);
+        kid.y = clamp(parent.y - 12, 0, h - 4);
+      }
+      kid.placed = true;
+      panel.fighters.push(kid);
+      applyNodeMeta(kid, panel.overlay);
+    });
+  }
+
+  function renderCommand(ms, kidsByRoot) {
+    var zs = ensureZone(CMD_CFG);
+    var supported = !!(overview && overview.claudeSupported);
+    zs.el.hidden = !supported;
+    zs.countEl.textContent = String(ms.length);
+
+    if (!zs.empty) {
+      var empty = document.createElement('div');
+      empty.className = 'panel-empty';
+      empty.textContent = 'Nessuna sessione Claude attiva.';
+      zs.empty = empty;
+    }
+
+    var plans = [];
+    if (supported) {
+      var liveMs = ms.filter(function (m) { return m.isLive; });
+      var idleMs = ms.filter(function (m) { return !m.isLive; });
+      liveMs.forEach(function (m) {
+        var slots = m.live.map(function (s) { return { session: s }; })
+          .concat(m.ghosts.map(function (d) { return { ghost: d }; }));
+        var n = Math.max(1, Math.ceil(slots.length / DELEG_SLOTS.length));
+        for (var i = 0; i < n; i += 1) {
+          plans.push({
+            key: 'm:' + m.id + ':' + i, kind: 'mission', mission: m, part: i, parts: n,
+            slots: slots.slice(i * DELEG_SLOTS.length, (i + 1) * DELEG_SLOTS.length)
+          });
+        }
+      });
+      for (var j = 0; j < idleMs.length; j += PANEL_SLOTS) {
+        plans.push({ key: 'i:' + (j / PANEL_SLOTS), kind: 'idle', list: idleMs.slice(j, j + PANEL_SLOTS) });
+      }
+    }
+
+    var keys = [];
+    plans.forEach(function (plan) {
+      keys.push(plan.key);
+      var panel = ensureCmdPanel(zs, plan.key);
+      panel.fighters = [];
+      var w = panel.bg.w;
+      var h = panel.bg.h;
+
+      if (plan.kind === 'mission') {
+        var m = plan.mission;
+        panel.mission = m;
+        panel.el.setAttribute('data-mission', m.id);
+        panel.el.setAttribute('aria-label', 'Missione di Claude · ' + m.project + ' · ' + claudeState(m.c));
+        panel.strip.style.background = m.color;
+        var nLive = m.live.length + m.ghosts.length;
+        panel.strip.textContent = (plan.part === 0 ? 'CLAUDE · ' : 'CONTINUA · ') + truncate(m.project, 16) +
+          ' · ' + claudeState(m.c) + (nLive ? ' · ' + nLive + ' deleghe' : '') +
+          (plan.parts > 1 ? ' · ' + (plan.part + 1) + '/' + plan.parts : '');
+        panel.moreEl.hidden = true;
+
+        var cf = null;
+        if (plan.part === 0) {
+          cf = ensureClaudeFighter(m);
+          cf.x = w * CLAUDE_X;
+          cf.y = h * CLAUDE_Y;
+          cf.dir = 'R';
+          cf.placed = true;
+          panel.fighters.push(cf);
+          applyNodeMeta(cf, panel.overlay);
+
+          var subs = m.c.subagents.map(function (x, i) { return { x: x, i: i }; });
+          subs.sort(function (a, b) {
+            var wa = a.x.state === 'working' ? 0 : 1;
+            var wb = b.x.state === 'working' ? 0 : 1;
+            return wa !== wb ? wa - wb : a.i - b.i;
+          });
+          subs.slice(0, SUB_VISIBLE).forEach(function (item, idx) {
+            var sf = ensureSubFighter(m, item.x, cf.id);
+            placeKid(sf, cf, idx, w, h);
+            sf.placed = true;
+            panel.fighters.push(sf);
+            applyNodeMeta(sf, panel.overlay);
+          });
+          var hidden = subs.length - SUB_VISIBLE;
+          if (hidden > 0) {
+            panel.moreEl.hidden = false;
+            panel.moreEl.textContent = '+' + hidden + ' sub';
+            panel.moreEl.style.left = pct((cf.x / w) * 100);
+            panel.moreEl.style.top = pct(((cf.y - 46) / h) * 100);
+          }
+        } else {
+          panel.anchor = { x: 0, y: h * CLAUDE_Y - 12 };
+        }
+
+        plan.slots.forEach(function (slot, i) {
+          var pos = DELEG_SLOTS[i];
+          if (slot.session) {
+            var f = fighters.get(slot.session.id);
+            if (!f) return;
+            f.inMission = true;
+            f.isCompanion = false;
+            f.parentId = null;
+            f.x = w * pos[0];
+            f.y = h * pos[1];
+            f.dir = 'L';
+            f.placed = true;
+            panel.fighters.push(f);
+            applyNodeMeta(f, panel.overlay);
+            attachKids(f, kidsByRoot, panel, w, h);
+          } else {
+            panel.ghosts.push({ x: w * pos[0], y: h * pos[1], d: slot.ghost });
+          }
+        });
+      } else {
+        panel.el.removeAttribute('data-mission');
+        panel.el.setAttribute('aria-label', 'Sala comandi · Claude a riposo');
+        panel.strip.style.background = '#9aa3c7';
+        panel.strip.textContent = 'CLAUDE · A RIPOSO · ' + plan.list.length;
+        panel.moreEl.hidden = true;
+        plan.list.forEach(function (m, slot) {
+          var cf = ensureClaudeFighter(m);
+          placeMain(cf, slot, w, h);
+          cf.dir = 'R';
+          cf.placed = true;
+          panel.fighters.push(cf);
+          applyNodeMeta(cf, panel.overlay);
+        });
+      }
+    });
+
+    Array.from(zs.panels.keys()).forEach(function (k) {
+      if (keys.indexOf(k) >= 0) return;
+      var p = zs.panels.get(k);
+      if (p && p.el.parentNode) p.el.parentNode.removeChild(p.el);
+      zs.panels.delete(k);
+    });
+
+    var wantEmpty = supported && plans.length === 0;
+    if (wantEmpty) {
+      if (zs.empty.parentNode !== zs.panelsEl) zs.panelsEl.appendChild(zs.empty);
+    } else if (zs.empty.parentNode) {
+      zs.empty.parentNode.removeChild(zs.empty);
+    }
+
+    keys.forEach(function (k, i) {
+      var panel = zs.panels.get(k);
+      var current = zs.panelsEl.children[i];
+      if (current !== panel.el) zs.panelsEl.insertBefore(panel.el, current || null);
+    });
+  }
+
   function layout() {
     if (!atlas || !overview) return;
 
@@ -640,6 +1456,12 @@
       present.add(s.id);
     });
 
+    var ms = buildMissions();
+    ms.forEach(function (m) {
+      present.add(m.fid);
+      m.c.subagents.forEach(function (x) { present.add(subFid(m.id, x.id)); });
+    });
+
     fighters.forEach(function (f, id) {
       if (!present.has(id)) {
         detachNode(f);
@@ -647,9 +1469,12 @@
       }
     });
 
-    sessions.forEach(function (s) {
-      var f = ensureFighter(s);
-      f.placed = false;
+    fighters.forEach(function (f) { f.placed = false; });
+    sessions.forEach(function (s) { ensureFighter(s); });
+
+    var pulled = new Set();
+    ms.forEach(function (m) {
+      m.live.forEach(function (s) { pulled.add(s.id); });
     });
 
     var mainsByStatus = {};
@@ -661,7 +1486,7 @@
     sessions.forEach(function (s) {
       if (s.parentId && s.parentId !== s.id && lastSessionsById.has(s.parentId)) {
         companionSessions.push(s);
-      } else {
+      } else if (!pulled.has(s.id)) {
         mainSessions.push(s);
       }
     });
@@ -683,8 +1508,11 @@
     });
     companionsByRoot.forEach(function (list) { list.sort(sortByRecent); });
 
+    renderCommand(ms, companionsByRoot);
+
     var selected = {};
     var selectedIds = new Set();
+    pulled.forEach(function (id) { selectedIds.add(id); });
 
     ZONES.forEach(function (zone) {
       var list = mainsByStatus[zone.status] || [];
@@ -732,9 +1560,16 @@
       if (!f.placed) detachNode(f);
     });
 
+    applyFx();
+
+    if (openId === SERVICE_ID) {
+      // Dialog di Freezer: le risposte si calcolano al click, non a ogni overview.
+      return;
+    }
+
     if (openId) {
       var current = fighters.get(openId);
-      if (current && present.has(openId)) populateDialog(current, false);
+      if (current && current.placed) populateDialog(current, false);
       else closeDialog();
     }
   }
@@ -791,7 +1626,14 @@
       flame: false
     };
 
+    if (f.powerUntil > now) {
+      pose.anim = 'power';
+      pose.fps = 6;
+      return pose;
+    }
+
     if (f.isCompanion) {
+      if (f.kind === 'sub' && s.status !== 'working') pose.alpha = 0.5;
       if (s.status === 'working' && !reducedMotion) {
         var seed = (fnv1a(f.id) % 628) / 100;
         var angle = (now / 1000) * 2 + seed;
@@ -804,6 +1646,21 @@
         pose.anim = 'stand';
         pose.fps = 2;
       }
+      return pose;
+    }
+
+    if (f.chargeUntil > now) {
+      pose.anim = hasAnim(f.char, 'kameCharge') ? 'kameCharge' : 'charge';
+      pose.fps = 6;
+      return pose;
+    }
+
+    if (f.hold && s.status === 'idle') {
+      var hp = holdProgress(f, now);
+      pose.anim = hp < 1 ? 'walkSide' : 'stand';
+      pose.fps = 8;
+      pose.dir = 'L';
+      pose.walkP = hp;
       return pose;
     }
 
@@ -860,9 +1717,10 @@
     }
 
     if (status === 'active') {
-      pose.anim = 'stand';
+      pose.anim = f.role === 'plan' && hasAnim(f.char, 'power') ? 'power' : 'stand';
       pose.fps = 2;
-      pose.indicator = '!';
+      if (f.kind === 'claude') pose.indicator = f.mission && f.mission.c.kind === 'bg' ? null : '?';
+      else pose.indicator = '!';
     } else if (status === 'stuck') {
       pose.anim = 'hurt';
       pose.fps = 4;
@@ -889,6 +1747,18 @@
     return pose;
   }
 
+  function holdProgress(f, now) {
+    if (!f.hold || reducedMotion) return 1;
+    return clamp((now - f.hold.start) / 1100, 0, 1);
+  }
+
+  function visibility(f, now) {
+    if (!f.appearAt) return 1;
+    if (now < f.appearAt) return reducedMotion ? 1 : 0;
+    if (reducedMotion) return 1;
+    return clamp((now - f.appearAt) / 300, 0, 1);
+  }
+
   function frameFor(f, pose, now) {
     var entry = resolveAnim(f.char, pose.anim);
     if (f.anim !== entry.key) {
@@ -899,7 +1769,7 @@
     var fps = reducedMotion ? 1 : pose.fps;
     var index = 0;
     if (frames.length > 1 && fps > 0) {
-      var elapsed = Math.max(0, now - (f.animStart || now));
+      var elapsed = Math.max(0, now - (f.animStart || now)) + (f.hash % 900);
       index = Math.floor((elapsed / 1000) * fps) % frames.length;
     }
     return {
@@ -945,8 +1815,11 @@
       ctx.scale(-1, 1);
     }
 
-    var dx = Math.round(x - sw / 2);
-    var dy = Math.round(y - sh);
+    var sc = opts.scale || 1;
+    var dw = Math.round(sw * sc);
+    var dh = Math.round(sh * sc);
+    var dx = Math.round(x - dw / 2);
+    var dy = Math.round(y - dh);
 
     if (opts.flash && !reducedMotion) {
       flashCtx.clearRect(0, 0, 64, 64);
@@ -956,9 +1829,9 @@
       flashCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       flashCtx.fillRect(0, 0, sw, sh);
       flashCtx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(flashCanvas, 0, 0, sw, sh, dx, dy, sw, sh);
+      ctx.drawImage(flashCanvas, 0, 0, sw, sh, dx, dy, dw, dh);
     } else {
-      ctx.drawImage(sprites, fr[0], fr[1], sw, sh, dx, dy, sw, sh);
+      ctx.drawImage(sprites, fr[0], fr[1], sw, sh, dx, dy, dw, dh);
     }
 
     ctx.restore();
@@ -1039,7 +1912,7 @@
   }
 
   function drawAttack(ctx, item, now) {
-    if (reducedMotion || !item.pose.attack) return;
+    if (reducedMotion || !item.pose.attack || item.f.kind === 'claude') return;
     var sign = item.pose.dir === 'L' ? -1 : 1;
     var handX = item.x + sign * 10;
     var handY = item.y - 16;
@@ -1119,6 +1992,7 @@
     node.btn.style.height = pct((size.h / h) * 100);
     node.btn.style.transform = 'translate(-50%, -100%)';
 
+    node.name.style.opacity = item.vis < 1 ? String(item.vis) : '';
     node.name.style.left = pct(left);
     node.name.style.top = pct(top);
     node.name.style.transform = 'translate(-50%, 4px)';
@@ -1145,6 +2019,178 @@
     }
   }
 
+  function curvePoints(x1, y1, x2, y2) {
+    var len = Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+    var n = Math.max(2, Math.round(len));
+    var cx = (x1 + x2) / 2;
+    var cy = Math.min(y1, y2) - Math.min(18, len * 0.18);
+    var pts = [];
+    for (var i = 0; i <= n; i += 1) {
+      var t = i / n;
+      var u = 1 - t;
+      pts.push([u * u * x1 + 2 * u * t * cx + t * t * x2, u * u * y1 + 2 * u * t * cy + t * t * y2]);
+    }
+    return pts;
+  }
+
+  // filo di ki di una missione: dal mittente (Claude) al destinatario
+  function drawMissionThread(ctx, pts, color, mode, thick, now, alpha) {
+    var off = reducedMotion ? 0 : Math.floor(now / 45);
+    var a = alpha;
+    if (mode === 'flicker') {
+      color = '#ff6b5a';
+      if (!reducedMotion && Math.floor(now / 90) % 4 === 0) a *= 0.25;
+    }
+    ctx.save();
+    ctx.globalAlpha = a;
+    for (var i = 0; i < pts.length; i += 1) {
+      var on;
+      if (mode === 'flow') on = ((i - off) % 8 + 8) % 8 < 4;
+      else on = i % 6 < 4;
+      if (!on) continue;
+      var x = Math.round(pts[i][0]);
+      var y = Math.round(pts[i][1]);
+      if (thick) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x - 1, y - 1, 4, 4);
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, 2, 2);
+      } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(x - 1, y - 1, 3, 3);
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawRing(ctx, item, now) {
+    var f = item.f;
+    var m = missionOf(f);
+    var color;
+    var rx;
+    var lw;
+    var alpha = 1;
+    if (f.kind === 'claude') {
+      color = m ? m.color : '#fff';
+      rx = Math.max(11, item.fr[2] * 0.6);
+      lw = 2;
+    } else if (f.kind === 'oc' && !f.isCompanion) {
+      color = ROLE_COLOR[f.role] || '#fff';
+      rx = item.fr[2] * (0.4 + 0.07 * (f.hash % 3));
+      lw = 1;
+      alpha = 0.7;
+    } else {
+      return;
+    }
+    if (highlightId && f.missionId === highlightId && m) {
+      color = m.color;
+      lw += 1;
+      alpha = 1;
+      if (!reducedMotion) rx += Math.sin(now / 160) * 2;
+      else rx += 2;
+    }
+    var ry = Math.max(2, rx * 0.3);
+    ctx.save();
+    ctx.globalAlpha = alpha * item.vis;
+    ctx.lineWidth = lw + 2;
+    ctx.strokeStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(item.x, item.y - 1, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(item.x, item.y - 1, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPowerRing(ctx, item, now) {
+    var f = item.f;
+    if (reducedMotion || !f.ringAt) return;
+    var p = (now - f.ringAt) / 550;
+    if (p < 0 || p > 1) return;
+    var m = missionOf(f);
+    ctx.save();
+    ctx.globalAlpha = 1 - p;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = m ? m.color : '#fff';
+    ctx.beginPath();
+    ctx.ellipse(item.x, item.y - 10, 6 + p * 22, 10 + p * 12, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawProjectiles(ctx, byId, now) {
+    for (var i = 0; i < projectiles.length; i += 1) {
+      var pr = projectiles[i];
+      var from = byId.get(pr.from);
+      var to = byId.get(pr.to);
+      if (!from || !to) continue;
+      var t = clamp((now - pr.start) / pr.dur, 0, 1);
+      var pts = curvePoints(from.x, from.y - 14, to.x, to.y - 14);
+      for (var k = 3; k >= 0; k -= 1) {
+        var tt = clamp(t - k * 0.04, 0, 1);
+        var pt = pts[Math.min(pts.length - 1, Math.round(tt * (pts.length - 1)))];
+        var r = k === 0 ? 4 : 3 - k * 0.6;
+        ctx.save();
+        ctx.globalAlpha = k === 0 ? 1 : 0.7 - k * 0.15;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], r + 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = pr.color;
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
+        ctx.fill();
+        if (k === 0) {
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(Math.round(pt[0]) - 1, Math.round(pt[1]) - 1, 2, 2);
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawMarks(ctx, item, now, m) {
+    var f = item.f;
+    if (f.kind !== 'claude' || !m) return;
+    var top = Math.round(item.y - item.fr[3] - 14);
+    var stuck = false;
+    for (var i = 0; i < m.live.length; i += 1) {
+      if (m.live[i].status === 'stuck') stuck = true;
+    }
+    var alert = f.alertUntil > now || stuck;
+    var wait = item.pose.indicator === '?';
+    var blinkOn = reducedMotion || Math.floor(now / 450) % 2 === 0;
+    var qx = Math.round(item.x) - (alert ? 8 : 3);
+    if (wait && blinkOn) drawGlyph(ctx, '?', qx, top, 2, '#ffe03a');
+    if (alert && (reducedMotion || Math.floor(now / 200) % 2 === 0)) {
+      drawGlyph(ctx, '!', Math.round(item.x) + (wait ? 4 : -2), top, 2, '#ff4040');
+    }
+  }
+
+  function drawGhost(ctx, g, color, anchor, now, alpha) {
+    var pts = curvePoints(anchor.x, anchor.y, g.x, g.y - 12);
+    drawMissionThread(ctx, pts, color, 'steady', false, now, 0.5 * alpha);
+    ctx.save();
+    ctx.globalAlpha = 0.8 * alpha;
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(g.x, g.y - 1, 11, 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawGlyph(ctx, '?', Math.round(g.x) - 3, Math.round(g.y - 22), 2, color);
+    ctx.restore();
+  }
+
   function drawPanel(panel, now) {
     if (!panel.bg) return;
     var ctx = panel.ctx;
@@ -1158,6 +2204,7 @@
       ctx.fillRect(0, 0, panel.canvas.width, panel.canvas.height);
     }
 
+    var mission = panel.mission || null;
     var items = [];
     var i;
     for (i = 0; i < panel.fighters.length; i += 1) {
@@ -1168,46 +2215,92 @@
       if (!fr) continue;
       var drawX = f.x + pose.offsetX;
       var drawY = f.y + pose.orbitY;
+      if (pose.walkP !== undefined) {
+        var owner = fighters.get('c:' + f.missionId);
+        if (owner) {
+          drawX = f.x + (owner.x + 24 - f.x) * pose.walkP;
+          drawY = f.y + (owner.y + 3 - f.y) * pose.walkP;
+        }
+      }
       f.drawX = drawX;
       f.drawY = drawY;
       var flip = (frame.face === 'L' || frame.face === 'R') && frame.face !== pose.dir;
-      items.push({ f: f, pose: pose, frame: frame, fr: fr, x: drawX, y: drawY, flip: flip });
+      if (frame.face === 'F' && f.kind === 'oc' && !f.isCompanion && (f.hash & 1) && !pose.indicator) flip = true;
+      var vis = visibility(f, now);
+      var dim = highlightId && f.missionId !== highlightId;
+      items.push({ f: f, pose: pose, frame: frame, fr: fr, x: drawX, y: drawY, flip: flip, vis: vis * (dim ? 0.35 : 1) });
     }
 
     var byId = new Map();
     items.forEach(function (item) { byId.set(item.f.id, item); });
+
+    var claudeItem = mission ? byId.get(mission.fid) : null;
+    var anchor = claudeItem ? { x: claudeItem.x, y: claudeItem.y - 14 } : (panel.anchor || null);
+    var threadDim = highlightId && mission && mission.id !== highlightId ? 0.35 : 1;
 
     items.forEach(function (item) {
       var f = item.f;
       if (!f.isCompanion || !f.parentId) return;
       var parent = byId.get(f.parentId);
       if (!parent) return;
+      if (parent.f.kind === 'claude' && mission) {
+        if (item.vis <= 0) return;
+        var spts = curvePoints(parent.x, parent.y - 10, item.x, item.y - 10);
+        drawMissionThread(ctx, spts, mission.color, f.session.status === 'working' ? 'flow' : 'steady', false, now, (f.session.status === 'working' ? 1 : 0.5) * threadDim);
+        return;
+      }
       var active = f.session.status === 'working';
       drawKiThread(ctx, parent.x, parent.y - 10, item.x, item.y - 10, active, now);
     });
+
+    if (mission && anchor) {
+      items.forEach(function (item) {
+        var f = item.f;
+        if (f.kind !== 'oc' || f.isCompanion || f.missionId !== mission.id) return;
+        if (item.vis <= 0) return;
+        var st = f.session.status;
+        var mode = st === 'working' ? 'flow' : (st === 'stuck' || st === 'failed' ? 'flicker' : 'steady');
+        var pts = curvePoints(anchor.x, anchor.y, item.x, item.y - 14);
+        drawMissionThread(ctx, pts, mission.color, mode, true, now, (f.hold && st === 'idle' ? 0.5 : 1) * threadDim);
+      });
+      (panel.ghosts || []).forEach(function (g) {
+        drawGhost(ctx, g, mission.color, anchor, now, threadDim);
+      });
+    }
 
     items.sort(function (a, b) { return a.y - b.y; });
 
     items.forEach(function (item) {
       var f = item.f;
+      drawRing(ctx, item, now);
+      drawPowerRing(ctx, item, now);
+      ctx.save();
+      ctx.globalAlpha = item.vis;
       drawShadow(ctx, item.x, item.y, item.fr[2]);
-      var alpha = item.pose.alpha * (item.pose.hidden ? 0 : 1);
+      ctx.restore();
+      var alpha = item.pose.alpha * item.vis * (item.pose.hidden ? 0 : 1);
       drawSprite(ctx, item.frame.key, item.x, item.y, {
         flip: item.flip,
         alpha: alpha,
         rotate: item.pose.rotate,
-        flash: f.flashUntil > now
+        flash: f.flashUntil > now,
+        scale: f.scale
       });
     });
 
     items.forEach(function (item) {
+      if (item.vis < 0.5) return;
       drawAttack(ctx, item, now);
       if (item.pose.flame) drawFlame(ctx, item, now);
     });
 
     items.forEach(function (item) {
+      if (item.vis < 0.5) return;
       drawIndicator(ctx, item, now);
+      drawMarks(ctx, item, now, mission);
     });
+
+    drawProjectiles(ctx, byId, now);
 
     items.forEach(function (item) {
       updateOverlay(item, panel, now);
@@ -1216,9 +2309,43 @@
 
   // ---- dialog GBA ----
 
+  function delegTitles(m) {
+    var shown = m.titles.slice(0, 4).map(function (t) {
+      return truncate(t.title, 26) + (t.unlinked ? ' (non collegata)' : (t.live ? '' : ' (finita)'));
+    });
+    var extra = m.titles.length - shown.length;
+    return shown.join(' · ') + (extra > 0 ? ' · +' + extra : '');
+  }
+
+  function claudeRows(f) {
+    var m = f.mission;
+    var c = m.c;
+    var subsWorking = c.subagents.filter(function (x) { return x.state === 'working'; }).length;
+    var live = m.live.length + m.ghosts.length;
+    var deleghe = live + '/' + m.total + (m.total ? ' · ' + delegTitles(m) : '');
+    return [
+      ['Stato', claudeState(c) + (c.kind === 'bg' ? ' · sessione bg' : '')],
+      ['Attività', claudeActivity(c)],
+      ['Modello', c.model || '—'],
+      ['Directory', c.directory || '—'],
+      ['Sub-agenti', subsWorking + '/' + c.subagents.length],
+      ['Deleghe', deleghe],
+      ['Aggiornata', timeAgo(c.updatedAt)]
+    ];
+  }
+
   function dialogRows(f) {
     var s = f.session;
     var la = s.lastActivity;
+    if (f.kind === 'claude') return claudeRows(f);
+    if (f.kind === 'sub') {
+      var mm = missionOf(f);
+      return [
+        ['Tipo', s.title],
+        ['Stato', s.status === 'working' ? 'in corso' : 'finito'],
+        ['Agli ordini di', 'Claude' + (mm ? ' · ' + mm.project : '')]
+      ];
+    }
 
     var move = '—';
     if (la) {
@@ -1232,15 +2359,17 @@
       ? num(s.todos.done) + '/' + num(s.todos.total) + ' completati'
       : 'nessuno';
 
-    return [
-      ['Stato', statusLabel(s.status)],
+    var from = missionOf(f);
+    var rows0 = [['Stato', statusLabel(s.status)]];
+    if (f.missionId) rows0.push(['Delegata da', 'Claude · ' + (from ? from.project : (s.claude && s.claude.short) || '—')]);
+    return rows0.concat([
       ['Ultima mossa', move],
       ['Modello', model],
       ['Costo', costo],
       ['Todos', todos],
       ['Directory', s.directory || '—'],
       ['Aggiornata', timeAgo(s.timeUpdated)]
-    ];
+    ]);
   }
 
   function stopTyping() {
@@ -1281,18 +2410,12 @@
     }, TYPE_MS);
   }
 
-  function drawPortrait(f) {
+  function drawPortraitChar(charName) {
     var canvas = $('dialog-portrait');
     if (!canvas || !atlas || !sprites) return;
     var ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, 32, 32);
-
-    var charName = f.char;
-    if (f.isCompanion && f.parentId) {
-      var parent = fighters.get(f.parentId);
-      if (parent) charName = parent.char;
-    }
 
     var entry = resolveAnim(charName, 'portrait');
     var frameKey = entry.def.frames && entry.def.frames[0];
@@ -1307,20 +2430,33 @@
     ctx.drawImage(sprites, fr[0], fr[1], fr[2], fr[3], dx, dy, w, h);
   }
 
+  function drawPortrait(f) {
+    var charName = f.char;
+    if (f.isCompanion && f.parentId) {
+      var parent = fighters.get(f.parentId);
+      if (parent) charName = parent.char;
+    }
+    if (f.kind === 'sub') charName = CHAR_CLAUDE;
+    drawPortraitChar(charName);
+  }
+
   function populateDialog(f, animate) {
     stopTyping();
 
     var s = f.session;
     var title = $('dialog-title');
     if (title) {
-      var name = (CHAR_LABEL[f.char] || 'Guerriero').toUpperCase();
+      var name = (f.label || CHAR_LABEL[f.char] || 'Guerriero').toUpperCase();
       title.textContent = name + ' · ' + (s.title || 'Senza titolo');
     }
 
     drawPortrait(f);
 
     var open = $('dialog-open');
-    if (open) open.href = '/#s=' + encodeURIComponent(s.id);
+    if (open) {
+      open.hidden = f.kind !== 'oc';
+      if (f.kind === 'oc') open.href = '/#s=' + encodeURIComponent(s.id);
+    }
 
     var body = $('dialog-body');
     if (!body) return;
@@ -1346,6 +2482,221 @@
     if (values.length) startTyping(values);
   }
 
+  // ---- dialog di Freezer (il servizio opencode) ----
+
+  var SERVICE_OPENING = 'Ohoho. Io sono il servizio opencode: ogni guerriero qui sotto combatte ai miei ordini. Cosa vuoi sapere?';
+  var SERVICE_DOWN = 'Il trono è vuoto: il servizio opencode non risponde.';
+  var TALK_OPTIONS = [
+    { key: 'status', label: 'Come stai?' },
+    { key: 'fighting', label: 'Chi sta combattendo?' },
+    { key: 'cost', label: 'Quanto ci costa?' },
+    { key: 'problems', label: 'Ci sono problemi?' },
+    { key: 'claude', label: 'E Claude?' },
+    { key: 'bye', label: 'Arrivederci' }
+  ];
+
+  function serviceTitle(s) {
+    return s && s.title ? s.title : 'Senza titolo';
+  }
+
+  function activityLabel(s) {
+    var la = s && s.lastActivity;
+    if (!la) return 'attività sconosciuta';
+    return la.tool ? la.tool : typeLabel(la.type);
+  }
+
+  function serviceAnswer(key) {
+    if (!overview) return SERVICE_DOWN;
+
+    var sessions = overview.sessions || [];
+    var svc = overview.service || {};
+
+    if (key === 'status') {
+      var processes = overview.processes || [];
+      var zombies = 0;
+      processes.forEach(function (p) {
+        if (p && p.state === 'Z') zombies += 1;
+      });
+      return 'Sono vivo e in forma: il servizio v' + (svc.version || '—') +
+        ' risponde su ' + (svc.url || '—') + ', PID ' + (svc.pid == null ? '—' : svc.pid) +
+        '. Processi opencode: ' + processes.length + ', zombie: ' + zombies + '.';
+    }
+
+    if (key === 'fighting') {
+      var working = sessions.filter(function (s) {
+        return s.status === 'working';
+      }).sort(sortByRecent).slice(0, 5);
+      if (!working.length) return 'Nessuno. I miei guerrieri riposano.';
+      return 'In combattimento: ' + working.map(function (s) {
+        return serviceTitle(s) + ': ' + activityLabel(s);
+      }).join(' · ') + '.';
+    }
+
+    if (key === 'cost') {
+      var top = sessions.slice().sort(function (a, b) {
+        return num(b.estCost) - num(a.estCost);
+      }).filter(function (s) {
+        return num(s.estCost) > 0;
+      }).slice(0, 3);
+
+      var text = 'Ultime 24 ore: ' + money(overview.cost24h) + ' reali, circa ' +
+        money(overview.estCost24h) + ' a listino.';
+      if (top.length) {
+        text += ' Le più care: ' + top.map(function (s) {
+          return truncate(serviceTitle(s), 32) + ' ' + money(s.estCost);
+        }).join(', ') + '.';
+      }
+      return text;
+    }
+
+    if (key === 'problems') {
+      var stuck = sessions.filter(function (s) { return s.status === 'stuck'; });
+      var failed = sessions.filter(function (s) { return s.status === 'failed'; });
+      if (!stuck.length && !failed.length) return 'Nessun problema. Per ora.';
+
+      var parts = [];
+      if (stuck.length) {
+        parts.push('Bloccate: ' + stuck.length + ' (' + stuck.slice(0, 3).map(function (s) {
+          return truncate(serviceTitle(s), 32);
+        }).join(', ') + ').');
+      }
+      if (failed.length) {
+        parts.push('Fallite: ' + failed.length + ' (' + failed.slice(0, 3).map(function (s) {
+          return truncate(serviceTitle(s), 32);
+        }).join(', ') + ').');
+      }
+      return parts.join(' ');
+    }
+
+    if (key === 'claude') return claudeAnswer();
+
+    return '';
+  }
+
+  function claudeAnswer() {
+    if (!overview.claudeSupported) {
+      return 'Non vedo nessun Claude da qui: il server non mi manda notizie.';
+    }
+    if (!missions.length) return 'Nessun Claude in vista. La sala comandi è vuota.';
+
+    var working = missions.filter(function (m) { return m.c.status === 'working'; });
+    var waiting = missions.filter(function (m) { return m.c.status === 'waiting' && m.c.kind !== 'bg'; });
+    var bg = missions.filter(function (m) { return m.c.status === 'waiting' && m.c.kind === 'bg'; });
+    var idle = missions.filter(function (m) { return m.c.status === 'idle'; });
+    var parts = ['Claude: ' + missions.length + (missions.length === 1 ? ' sessione' : ' sessioni') +
+      ' (' + working.length + ' al lavoro, ' + (waiting.length + bg.length) + ' in attesa, ' + idle.length + ' a riposo).'];
+
+    if (waiting.length) {
+      parts.push('Aspettano te: ' + waiting.map(function (m) { return truncate(m.project, 20); }).join(', ') + '.');
+    }
+    var withLive = missions.filter(function (m) { return m.live.length + m.ghosts.length > 0; });
+    if (withLive.length) {
+      parts.push('Deleghe vive: ' + withLive.map(function (m) {
+        return truncate(m.project, 20) + ' ' + (m.live.length + m.ghosts.length);
+      }).join(', ') + '.');
+    } else {
+      parts.push('Nessuna delega in corso.');
+    }
+    var unlinked = [];
+    missions.forEach(function (m) {
+      m.titles.forEach(function (t) { if (t.unlinked && t.live) unlinked.push(truncate(t.title, 24)); });
+    });
+    if (unlinked.length) {
+      parts.push('Deleghe non collegate: ' + unlinked.length + ' (' + unlinked.slice(0, 3).join(', ') + ').');
+    }
+    return parts.join(' ');
+  }
+
+  function setServiceLine(text, animate) {
+    var line = $('service-line');
+    if (!line) return;
+    stopTyping();
+    line.textContent = '';
+    if (animate && !reducedMotion) startTyping([{ el: line, text: text }]);
+    else line.textContent = text;
+  }
+
+  function onServiceChoice(key) {
+    if (key === 'bye') {
+      closeDialog();
+      return;
+    }
+    setServiceLine(serviceAlive() ? serviceAnswer(key) : SERVICE_DOWN, true);
+  }
+
+  function populateServiceDialog(animate) {
+    stopTyping();
+
+    var title = $('dialog-title');
+    if (title) title.textContent = 'FREEZER · servizio opencode';
+
+    drawPortraitChar('frieza');
+
+    var open = $('dialog-open');
+    if (open) open.hidden = true;
+
+    var body = $('dialog-body');
+    if (!body) return;
+    body.textContent = '';
+
+    var line = document.createElement('p');
+    line.id = 'service-line';
+    line.className = 'talk-line';
+    body.appendChild(line);
+
+    var menu = document.createElement('ul');
+    menu.className = 'talk-menu';
+
+    TALK_OPTIONS.forEach(function (opt) {
+      var li = document.createElement('li');
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'talk-opt';
+      btn.textContent = opt.label;
+      btn.addEventListener('click', function () {
+        onServiceChoice(opt.key);
+      });
+      li.appendChild(btn);
+      menu.appendChild(li);
+    });
+
+    menu.addEventListener('keydown', function (event) {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      var opts = Array.prototype.slice.call(menu.querySelectorAll('.talk-opt'));
+      if (!opts.length) return;
+      event.preventDefault();
+      var index = opts.indexOf(document.activeElement);
+      var step = event.key === 'ArrowDown' ? 1 : -1;
+      if (index < 0) index = step > 0 ? 0 : opts.length - 1;
+      else index = (index + step + opts.length) % opts.length;
+      opts[index].focus();
+    });
+
+    body.appendChild(menu);
+
+    setServiceLine(serviceAlive() ? SERVICE_OPENING : SERVICE_DOWN, animate);
+  }
+
+  function openServiceDialog() {
+    if (!atlas || !overview) return;
+    var dialog = $('dialog');
+    if (!dialog) return;
+
+    openId = SERVICE_ID;
+    lastFocus = $('frieza-btn') || document.activeElement;
+
+    populateServiceDialog(true);
+    dialog.hidden = false;
+    renderSpeech();
+
+    var first = dialog.querySelector('.talk-opt');
+    if (first) first.focus();
+    else {
+      var close = $('dialog-close');
+      if (close) close.focus();
+    }
+  }
+
   function openDialog(id) {
     var f = fighters.get(id);
     if (!f || !atlas || !overview) return;
@@ -1353,10 +2704,12 @@
     if (!dialog) return;
 
     openId = id;
+    highlightId = f.missionId || null;
     lastFocus = f.node ? f.node.btn : document.activeElement;
 
     populateDialog(f, true);
     dialog.hidden = false;
+    renderSpeech();
 
     var close = $('dialog-close');
     if (close) close.focus();
@@ -1365,6 +2718,7 @@
   function closeDialog() {
     if (!openId) return;
     openId = null;
+    highlightId = null;
     stopTyping();
     var dialog = $('dialog');
     if (dialog) dialog.hidden = true;
@@ -1413,9 +2767,11 @@
 
   function onOverview(data) {
     overview = data;
+    noteOverviewEvents(data);
     layout();
     renderHud();
     drawBanner();
+    updateFriezaTag();
     if (!running) startLoop();
   }
 
@@ -1454,6 +2810,20 @@
     lastTick = ts;
 
     var now = Date.now();
+    var t0 = performance.now();
+
+    var expired = false;
+    holds.forEach(function (h, id) {
+      if (now >= h.until) {
+        holds.delete(id);
+        expired = true;
+      }
+    });
+    if (projectiles.length) {
+      projectiles = projectiles.filter(function (p) { return now - p.start < p.dur; });
+    }
+    if (expired) layout();
+
     drawBanner();
     zoneStates.forEach(function (zs) {
       if (zs.el.hidden) return;
@@ -1461,6 +2831,11 @@
         drawPanel(panel, now);
       });
     });
+
+    var cost = performance.now() - t0;
+    frameStats.n += 1;
+    frameStats.sum += cost;
+    if (cost > frameStats.max) frameStats.max = cost;
   }
 
   function startLoop() {
@@ -1515,20 +2890,80 @@
     var close = $('dialog-close');
     if (close) close.addEventListener('click', closeDialog);
 
+    var friezaBtn = $('frieza-btn');
+    if (friezaBtn) friezaBtn.addEventListener('click', openServiceDialog);
+
+    setInterval(speechTick, 250);
+
     loadAssets().then(function () {
       renderHud();
       if (!window.OC2D_DATA || typeof window.OC2D_DATA.start !== 'function') {
         showFatal('Livello dati non disponibile: impossibile avviare la vista 2D.');
-        setConn('offline');
+        handleConn('offline');
         return;
       }
-      window.OC2D_DATA.start(onOverview, onPart, setConn);
+      window.OC2D_DATA.start(onOverview, onPart, handleConn);
       startLoop();
     }).catch(function (err) {
-      setConn('offline');
+      handleConn('offline');
       showFatal('Impossibile caricare gli asset della vista 2D. ' + (err && err.message ? err.message : ''));
     });
   }
 
+  function installDebug() {
+    var mock = false;
+    try { mock = new URLSearchParams(location.search).has('mock'); } catch (err) {}
+    if (!mock) return;
+    window.__oc2d = {
+      events: eventLog,
+      state: function () {
+        var panels = [];
+        zoneStates.forEach(function (zs, status) {
+          zs.panels.forEach(function (p, key) {
+            panels.push({
+              zone: status,
+              key: String(key),
+              mission: p.mission ? p.mission.id : null,
+              ids: p.fighters.map(function (f) { return f.id; })
+            });
+          });
+        });
+        var fs = [];
+        fighters.forEach(function (f) {
+          fs.push({
+            id: f.id, kind: f.kind, char: f.char, role: f.role, anim: f.anim, placed: f.placed,
+            inMission: f.inMission, missionId: f.missionId, status: f.session && f.session.status,
+            vis: visibility(f, Date.now())
+          });
+        });
+        return {
+          reduced: reducedMotion,
+          highlight: highlightId,
+          supported: !!(overview && overview.claudeSupported),
+          missions: missions.map(function (m) {
+            return {
+              id: m.id, project: m.project, color: m.color, status: m.c.status,
+              live: m.live.map(function (s) { return s.id; }),
+              ghosts: m.ghosts.length, total: m.total
+            };
+          }),
+          panels: panels,
+          fighters: fs,
+          holds: Array.from(holds.keys()),
+          projectiles: projectiles.length
+        };
+      },
+      frame: function () {
+        return { n: frameStats.n, avg: frameStats.n ? frameStats.sum / frameStats.n : 0, max: frameStats.max };
+      },
+      resetFrame: function () { frameStats = { n: 0, sum: 0, max: 0 }; },
+      feed: function (raw) {
+        var data = window.OC2D_DATA.normalizeOverview(raw);
+        if (data) onOverview(data);
+      }
+    };
+  }
+
+  installDebug();
   init();
 })();
