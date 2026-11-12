@@ -55,7 +55,7 @@
     claude: ['goku'],                      // Claude Code sessions, by mission id
     service: ['frieza'],                   // opencode service on the throne
     role: {                                // opencode sessions, by role
-      delegate: ['ginyu'],
+      delegate: ['ginyu', 'burter', 'jeice', 'recoome'],
       plan: ['vegeta'],
       build: ['vegeta']
     },
@@ -69,6 +69,9 @@
     goku: 'Goku',
     vegeta: 'Vegeta',
     ginyu: 'Ginyu',
+    burter: 'Burter',
+    jeice: 'Jeice',
+    recoome: 'Recoome',
     frieza: 'Freezer',
     gohan: 'Gohan',
     bubbles: 'Bubbles'

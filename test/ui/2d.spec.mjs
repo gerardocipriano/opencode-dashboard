@@ -135,7 +135,7 @@ console.log('\n[1] desktop 1440x900, mock completo');
   check('ruoli opencode presenti: delegate, plan, build, kid', ['delegate', 'plan', 'build', 'kid'].every((r) => roles.has(r)), [...roles]);
   const plan = s0.fighters.find((f) => f.id === 's-plan-1');
   const del = s0.fighters.find((f) => f.id === 's-del-1');
-  check('casting: plan=vegeta, delegata per titolo oc-=ginyu', plan.char === 'vegeta' && del.char === 'ginyu', { plan: plan.char, del: del.char });
+  check('casting: plan=vegeta, delegata dal pool Ginyu', plan.char === 'vegeta' && ['ginyu', 'burter', 'jeice', 'recoome'].includes(del.char), { plan: plan.char, del: del.char });
 
   await shot(page, 'desktop-1-start');
 
