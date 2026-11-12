@@ -52,7 +52,7 @@
   // Backdrops work the same way: add the PNG to public/2d/bg/, register it as
   // atlas.bg.<key> = { src, w, h } and list the key in a ZONES entry (bgs).
   var CAST = {
-    claude: ['goku'],                      // Claude Code sessions, by mission id
+    claude: ['goku', 'piccolo', 'trunks'], // Claude Code sessions, by mission id
     service: ['frieza'],                   // opencode service on the throne
     role: {                                // opencode sessions, by role
       delegate: ['ginyu', 'burter', 'jeice', 'recoome'],
@@ -74,7 +74,9 @@
     recoome: 'Recoome',
     frieza: 'Freezer',
     gohan: 'Gohan',
-    bubbles: 'Bubbles'
+    bubbles: 'Bubbles',
+    piccolo: 'Piccolo',
+    trunks: 'Trunks'
   };
   // CAST filtered against the atlas (see resolveCast); pools are never empty
   // once the atlas is loaded.
@@ -167,6 +169,7 @@
   // Claude e missioni
   var missions = [];
   var missionById = new Map();
+  var claudeAssign = new Map();
   var prevClaude = new Map();
   var prevSessionIds = new Set();
   var prevLinked = new Set();
@@ -220,6 +223,25 @@
     return pool.length ? pool[fnv1a(String(id)) % pool.length] : '';
   }
 
+  // Claude missions get distinct characters when the pool allows it: the hash
+  // gives the starting preference, the first free name wins. Assignments are
+  // kept per mission id, so a sprite never changes while its mission lives.
+  function claudeChar(id) {
+    var pool = (cast && cast.claude) || [];
+    if (!pool.length) return '';
+    var cur = claudeAssign.get(id);
+    if (cur && pool.indexOf(cur) >= 0) return cur;
+    var used = {};
+    claudeAssign.forEach(function (name, mid) { if (mid !== id) used[name] = true; });
+    var pick = '';
+    for (var i = 0; i < pool.length; i += 1) {
+      if (!used[pool[i]]) { pick = pool[i]; break; }
+    }
+    if (!pick) pick = castPick(pool, id);
+    claudeAssign.set(id, pick);
+    return pick;
+  }
+
   function charLabel(name) {
     return CHAR_LABEL[name] || (name ? name.charAt(0).toUpperCase() + name.slice(1) : 'Guerriero');
   }
@@ -250,6 +272,7 @@
       Object.keys(map).forEach(function (k) { out[k] = live(map[k]); });
       return out;
     }
+    claudeAssign.clear();
     cast = {
       claude: live(CAST.claude),
       service: live(CAST.service),
@@ -1105,7 +1128,7 @@
       lastActivity: la,
       todos: { done: 0, total: 0 }
     };
-    f.char = castPick(cast.claude, m.id);
+    f.char = claudeChar(m.id);
     f.role = 'claude';
     f.label = 'Claude';
     f.missionId = m.id;
@@ -1543,6 +1566,11 @@
     });
 
     var ms = buildMissions();
+    var liveMissions = new Set();
+    ms.forEach(function (m) { liveMissions.add(m.id); });
+    claudeAssign.forEach(function (name, mid) {
+      if (!liveMissions.has(mid)) claudeAssign.delete(mid);
+    });
     ms.forEach(function (m) {
       present.add(m.fid);
       m.c.subagents.forEach(function (x) { present.add(subFid(m.id, x.id)); });
@@ -2522,7 +2550,7 @@
       var parent = fighters.get(f.parentId);
       if (parent) charName = parent.char;
     }
-    if (f.kind === 'sub') charName = castPick(cast.claude, f.missionId);
+    if (f.kind === 'sub') charName = claudeChar(f.missionId);
     drawPortraitChar(charName);
   }
 

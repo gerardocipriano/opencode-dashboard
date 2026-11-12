@@ -101,7 +101,8 @@ console.log('\n[1] desktop 1440x900, mock completo');
   check('zona sala comandi presente e visibile', await page.locator('[data-zone="command"]').isVisible());
   check('3 personaggi Claude', (await page.locator('.fighter-btn[data-kind="claude"]').count()) === 3);
   const claudeChars = new Set(s0.fighters.filter((f) => f.kind === 'claude').map((f) => f.char));
-  check('Claude sempre goku', claudeChars.size === 1 && claudeChars.has('goku'), [...claudeChars]);
+  check('Claude dal pool dei guerrieri', claudeChars.size >= 1 && [...claudeChars].every((c) => ['goku', 'piccolo', 'trunks'].includes(c)), [...claudeChars]);
+  check('tre Claude con sprite distinti', claudeChars.size === 3, [...claudeChars]);
   const ocChars = new Set(s0.fighters.filter((f) => f.kind === 'oc').map((f) => f.char));
   check('nessuna sessione opencode usa goku o frieza', !ocChars.has('goku') && !ocChars.has('frieza'), [...ocChars]);
 

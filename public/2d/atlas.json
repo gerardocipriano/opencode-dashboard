@@ -655,6 +655,161 @@
      "recoome:36"
     ]
    }
+  },
+  "piccolo": {
+   "stand": {
+    "face": "F",
+    "frames": [
+     "piccolo:0",
+     "piccolo:1"
+    ]
+   },
+   "walk": {
+    "face": "F",
+    "frames": [
+     "piccolo:5",
+     "piccolo:6",
+     "piccolo:7",
+     "piccolo:8"
+    ]
+   },
+   "walkSide": {
+    "face": "L",
+    "frames": [
+     "piccolo:2",
+     "piccolo:3",
+     "piccolo:4",
+     "piccolo:3"
+    ]
+   },
+   "back": {
+    "face": "B",
+    "frames": [
+     "piccolo:9",
+     "piccolo:10",
+     "piccolo:11",
+     "piccolo:12"
+    ]
+   },
+   "charge": {
+    "face": "F",
+    "frames": [
+     "piccolo:16",
+     "piccolo:17",
+     "piccolo:16",
+     "piccolo:17"
+    ]
+   },
+   "blast": {
+    "face": "R",
+    "frames": [
+     "piccolo:13",
+     "piccolo:14",
+     "piccolo:15",
+     "piccolo:14"
+    ]
+   },
+   "melee": {
+    "face": "R",
+    "frames": [
+     "piccolo:20",
+     "piccolo:21",
+     "piccolo:22",
+     "piccolo:21"
+    ]
+   },
+   "hurt": {
+    "face": "F",
+    "frames": [
+     "piccolo:18",
+     "piccolo:19"
+    ]
+   },
+   "ko": {
+    "face": "F",
+    "frames": [
+     "piccolo:19"
+    ]
+   }
+  },
+  "trunks": {
+   "stand": {
+    "face": "F",
+    "frames": [
+     "trunks:0",
+     "trunks:1"
+    ]
+   },
+   "walk": {
+    "face": "F",
+    "frames": [
+     "trunks:2",
+     "trunks:3",
+     "trunks:4",
+     "trunks:5"
+    ]
+   },
+   "walkSide": {
+    "face": "L",
+    "frames": [
+     "trunks:6",
+     "trunks:7",
+     "trunks:8",
+     "trunks:7"
+    ]
+   },
+   "back": {
+    "face": "B",
+    "frames": [
+     "trunks:9",
+     "trunks:10",
+     "trunks:11",
+     "trunks:10"
+    ]
+   },
+   "charge": {
+    "face": "F",
+    "frames": [
+     "trunks:20",
+     "trunks:21"
+    ]
+   },
+   "blast": {
+    "face": "L",
+    "frames": [
+     "trunks:15",
+     "trunks:16",
+     "trunks:17",
+     "trunks:16"
+    ]
+   },
+   "melee": {
+    "face": "L",
+    "frames": [
+     "trunks:12",
+     "trunks:13",
+     "trunks:14",
+     "trunks:13"
+    ]
+   },
+   "hurt": {
+    "face": "F",
+    "frames": [
+     "trunks:18"
+    ]
+   },
+   "ko": {
+    "face": "F",
+    "frames": [
+     "trunks:19"
+    ]
+   },
+   "portrait": {
+    "face": "F",
+    "frames": [
+     "trunks:22"
+    ]
+   }
   }
  },
  "fx": {
@@ -2141,6 +2296,282 @@
    305,
    16,
    31
+  ],
+  "piccolo:0": [
+   1,
+   338,
+   16,
+   30
+  ],
+  "piccolo:1": [
+   18,
+   338,
+   16,
+   30
+  ],
+  "piccolo:2": [
+   35,
+   338,
+   24,
+   30
+  ],
+  "piccolo:3": [
+   60,
+   338,
+   23,
+   31
+  ],
+  "piccolo:4": [
+   84,
+   338,
+   24,
+   30
+  ],
+  "piccolo:5": [
+   109,
+   338,
+   16,
+   31
+  ],
+  "piccolo:6": [
+   126,
+   338,
+   16,
+   30
+  ],
+  "piccolo:7": [
+   143,
+   338,
+   16,
+   31
+  ],
+  "piccolo:8": [
+   160,
+   338,
+   16,
+   30
+  ],
+  "piccolo:9": [
+   177,
+   338,
+   16,
+   31
+  ],
+  "piccolo:10": [
+   194,
+   338,
+   16,
+   31
+  ],
+  "piccolo:11": [
+   211,
+   338,
+   16,
+   28
+  ],
+  "piccolo:12": [
+   228,
+   338,
+   16,
+   31
+  ],
+  "piccolo:13": [
+   245,
+   338,
+   23,
+   30
+  ],
+  "piccolo:14": [
+   269,
+   338,
+   24,
+   30
+  ],
+  "piccolo:15": [
+   294,
+   338,
+   27,
+   30
+  ],
+  "piccolo:16": [
+   322,
+   338,
+   24,
+   30
+  ],
+  "piccolo:17": [
+   347,
+   338,
+   26,
+   30
+  ],
+  "piccolo:18": [
+   374,
+   338,
+   16,
+   29
+  ],
+  "piccolo:19": [
+   391,
+   338,
+   16,
+   33
+  ],
+  "piccolo:20": [
+   408,
+   338,
+   32,
+   30
+  ],
+  "piccolo:21": [
+   441,
+   338,
+   27,
+   28
+  ],
+  "piccolo:22": [
+   469,
+   338,
+   19,
+   31
+  ],
+  "trunks:0": [
+   489,
+   338,
+   16,
+   30
+  ],
+  "trunks:1": [
+   1,
+   372,
+   16,
+   30
+  ],
+  "trunks:2": [
+   18,
+   372,
+   16,
+   29
+  ],
+  "trunks:3": [
+   35,
+   372,
+   16,
+   30
+  ],
+  "trunks:4": [
+   52,
+   372,
+   16,
+   29
+  ],
+  "trunks:5": [
+   69,
+   372,
+   16,
+   30
+  ],
+  "trunks:6": [
+   86,
+   372,
+   16,
+   27
+  ],
+  "trunks:7": [
+   103,
+   372,
+   16,
+   29
+  ],
+  "trunks:8": [
+   120,
+   372,
+   16,
+   27
+  ],
+  "trunks:9": [
+   137,
+   372,
+   16,
+   31
+  ],
+  "trunks:10": [
+   154,
+   372,
+   16,
+   26
+  ],
+  "trunks:11": [
+   171,
+   372,
+   16,
+   25
+  ],
+  "trunks:12": [
+   188,
+   372,
+   18,
+   31
+  ],
+  "trunks:13": [
+   207,
+   372,
+   22,
+   29
+  ],
+  "trunks:14": [
+   230,
+   372,
+   18,
+   28
+  ],
+  "trunks:15": [
+   249,
+   372,
+   22,
+   30
+  ],
+  "trunks:16": [
+   272,
+   372,
+   22,
+   30
+  ],
+  "trunks:17": [
+   295,
+   372,
+   22,
+   30
+  ],
+  "trunks:18": [
+   318,
+   372,
+   16,
+   19
+  ],
+  "trunks:19": [
+   335,
+   372,
+   16,
+   18
+  ],
+  "trunks:20": [
+   352,
+   372,
+   22,
+   31
+  ],
+  "trunks:21": [
+   375,
+   372,
+   22,
+   31
+  ],
+  "trunks:22": [
+   398,
+   372,
+   58,
+   58
   ]
  },
  "bg": {
