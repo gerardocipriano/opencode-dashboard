@@ -24,6 +24,47 @@
     suspended: 'sospese'
   };
 
+  // ---- casting: who plays whom ----
+  // Adding a character is a data-only change:
+  //  1. Draw its frames into public/2d/sprites.png, cropped tight to the
+  //     figure (existing ones are 12-32 px wide, 16-41 px tall; each frame must
+  //     fit 64x64, the size of the white hit-flash canvas). A frame is drawn
+  //     bottom-centre anchored: its bottom row is the feet baseline (shadow
+  //     and ground point) and its horizontal centre is the character's x, so
+  //     keep the feet on the bottom row of every frame. The size of the first
+  //     stand frame sets the click target.
+  //  2. Describe it in public/2d/atlas.json: frames["<name>:<n>"] = [x, y, w, h]
+  //     (pixels in the sheet) and chars.<name>.<anim> = { face, frames: [keys] }.
+  //     Required: stand (also used as portrait and for the dialog box).
+  //     Optional: walk, walkSide, back, sit, charge, blast, melee, hurt, ko,
+  //     koFlash, kameCharge, kameFire, power, portrait. A missing animation
+  //     falls back along FALLBACKS (always ending at stand), so a character
+  //     with only stand/walk renders in every state. `face` is the direction
+  //     the frames look: 'F' front (some main opencode sessions are mirrored for variety),
+  //     'L' or 'R' side (mirrored to match the walking direction), 'B' back.
+  //     kameFire/kameCharge switch the shell-tool pose to a beam attack and
+  //     power is the idle pose of the plan role: add them only if wanted.
+  //  3. Add the name to a pool below. A pool with several names picks one by
+  //     hash of the session id, so the same session keeps the same character.
+  //     Optional: a display name in CHAR_LABEL (default: the capitalised name).
+  //  4. Check with /2d.html?mock=1. A name missing from the atlas, or without
+  //     a usable stand animation, is skipped with one console.warn.
+  // Backdrops work the same way: add the PNG to public/2d/bg/, register it as
+  // atlas.bg.<key> = { src, w, h } and list the key in a ZONES entry (bgs).
+  var CAST = {
+    claude: ['goku'],                      // Claude Code sessions, by mission id
+    service: ['frieza'],                   // opencode service on the throne
+    role: {                                // opencode sessions, by role
+      delegate: ['ginyu'],
+      plan: ['vegeta'],
+      build: ['vegeta']
+    },
+    kid: {                                 // child sessions and sub-agents
+      explore: ['bubbles'],                // explore/search/research/web types
+      work: ['gohan'],                     // plan/general/review/code/test types
+      other: ['gohan', 'bubbles']          // everything else
+    }
+  };
   var CHAR_LABEL = {
     goku: 'Goku',
     vegeta: 'Vegeta',
@@ -32,12 +73,9 @@
     gohan: 'Gohan',
     bubbles: 'Bubbles'
   };
-
-  // Cast: goku e' riservato a Claude, frieza al trono (servizio). Restano
-  // vegeta e ginyu per le sessioni opencode, gohan/bubbles per i compagni.
-  var CHAR_CLAUDE = 'goku';
-  var CHAR_SUB = ['gohan', 'bubbles'];
-  var ROLE_CHAR = { delegate: 'ginyu', plan: 'vegeta', build: 'vegeta' };
+  // CAST filtered against the atlas (see resolveCast); pools are never empty
+  // once the atlas is loaded.
+  var cast = null;
   var ROLE_COLOR = { delegate: '#d58bff', plan: '#5fd8ff', build: '#ffb347' };
   var ROLE_LABEL = { delegate: 'truppa delegata', plan: 'stratega', build: 'operaio' };
   var MISSION_COLORS = ['#ff4f8b', '#19e0ff', '#ffe03a', '#8dff4a', '#b983ff', '#ff9a2e'];
@@ -51,6 +89,8 @@
   var CHARGE_MS = 900;
   var PROJ_MS = 700;
 
+  // Animation fallback chain: the engine asks for the first name and uses the
+  // first one the character has; every chain ends at stand.
   var FALLBACKS = {
     stand: ['stand'],
     walk: ['walk', 'stand'],
@@ -168,9 +208,51 @@
 
   function kidFor(type, id) {
     var t = String(type || '').toLowerCase();
-    if (/explor|search|research|web/.test(t)) return 'bubbles';
-    if (/plan|general|review|code|test/.test(t)) return 'gohan';
-    return CHAR_SUB[fnv1a(String(id)) % CHAR_SUB.length];
+    if (/explor|search|research|web/.test(t)) return castPick(cast.kid.explore, id);
+    if (/plan|general|review|code|test/.test(t)) return castPick(cast.kid.work, id);
+    return castPick(cast.kid.other, id);
+  }
+
+  function castPick(pool, id) {
+    return pool.length ? pool[fnv1a(String(id)) % pool.length] : '';
+  }
+
+  function charLabel(name) {
+    return CHAR_LABEL[name] || (name ? name.charAt(0).toUpperCase() + name.slice(1) : 'Guerriero');
+  }
+
+  var castWarned = {};
+
+  function charUsable(name) {
+    var c = atlas && atlas.chars && atlas.chars[name];
+    var st = c && c.stand;
+    var ok = !!(st && st.frames && st.frames.length && atlas.frames && atlas.frames[st.frames[0]]);
+    if (!ok && !castWarned[name]) {
+      castWarned[name] = true;
+      console.warn('2d: character "' + name + '" skipped: missing from atlas.json or without a usable stand animation');
+    }
+    return ok;
+  }
+
+  // Filters CAST against the atlas. A pool left empty borrows the first
+  // usable character of the atlas so rendering never depends on one name.
+  function resolveCast() {
+    var any = Object.keys((atlas && atlas.chars) || {}).filter(charUsable)[0];
+    function live(pool) {
+      var out = (pool || []).filter(charUsable);
+      return out.length ? out : (any ? [any] : []);
+    }
+    function liveMap(map) {
+      var out = {};
+      Object.keys(map).forEach(function (k) { out[k] = live(map[k]); });
+      return out;
+    }
+    cast = {
+      claude: live(CAST.claude),
+      service: live(CAST.service),
+      role: liveMap(CAST.role),
+      kid: liveMap(CAST.kid)
+    };
   }
 
   function roleOf(s) {
@@ -764,6 +846,7 @@
       })
       .then(function (data) {
         atlas = data;
+        resolveCast();
         var names = Object.keys(atlas.bg || {});
         var jobs = [loadImage('2d/sprites.png')];
         names.forEach(function (name) {
@@ -943,7 +1026,7 @@
       id: id,
       kind: kind,
       session: null,
-      char: 'goku',
+      char: '',
       role: '',
       label: '',
       hash: fnv1a(id),
@@ -990,10 +1073,10 @@
       f.scale = f.hash % 3 === 0 ? 1.125 : 1;
     } else {
       f.role = roleOf(session);
-      f.char = ROLE_CHAR[f.role];
+      f.char = castPick(cast.role[f.role] || cast.role.build, f.id);
       f.scale = 1;
     }
-    f.label = CHAR_LABEL[f.char] || 'Guerriero';
+    f.label = charLabel(f.char);
     f.missionId = session.claude ? session.claude.id : null;
     f.inMission = false;
     f.hold = holds.get(session.id) || null;
@@ -1019,7 +1102,7 @@
       lastActivity: la,
       todos: { done: 0, total: 0 }
     };
-    f.char = CHAR_CLAUDE;
+    f.char = castPick(cast.claude, m.id);
     f.role = 'claude';
     f.label = 'Claude';
     f.missionId = m.id;
@@ -1047,7 +1130,7 @@
     };
     f.char = kidFor(sub.type, sub.id);
     f.role = 'sub';
-    f.label = CHAR_LABEL[f.char];
+    f.label = charLabel(f.char);
     f.scale = f.hash % 3 === 0 ? 1.125 : 1;
     f.missionId = m.id;
     f.isCompanion = true;
@@ -1578,7 +1661,7 @@
 
   function resolveAnim(charName, animName) {
     var chars = atlas.chars || {};
-    var char = chars[charName] || chars.goku || {};
+    var char = chars[charName] || chars[(cast.claude || [])[0]] || {};
     var chain = FALLBACKS[animName] || [animName, 'stand'];
     for (var i = 0; i < chain.length; i += 1) {
       var def = char[chain[i]];
@@ -1670,7 +1753,7 @@
 
     if (status === 'working') {
       if (tool === 'shell' || tool === 'bash') {
-        if (f.char === 'goku' && hasAnim(f.char, 'kameFire')) {
+        if (hasAnim(f.char, 'kameFire')) {
           var phase = reducedMotion ? 0 : since % 4000;
           if (phase < 1200) {
             pose.anim = 'kameCharge';
@@ -2436,7 +2519,7 @@
       var parent = fighters.get(f.parentId);
       if (parent) charName = parent.char;
     }
-    if (f.kind === 'sub') charName = CHAR_CLAUDE;
+    if (f.kind === 'sub') charName = castPick(cast.claude, f.missionId);
     drawPortraitChar(charName);
   }
 
@@ -2446,7 +2529,7 @@
     var s = f.session;
     var title = $('dialog-title');
     if (title) {
-      var name = (f.label || CHAR_LABEL[f.char] || 'Guerriero').toUpperCase();
+      var name = (f.label || charLabel(f.char)).toUpperCase();
       title.textContent = name + ' · ' + (s.title || 'Senza titolo');
     }
 
@@ -2630,7 +2713,7 @@
     var title = $('dialog-title');
     if (title) title.textContent = 'FREEZER · servizio opencode';
 
-    drawPortraitChar('frieza');
+    drawPortraitChar(cast.service[0]);
 
     var open = $('dialog-open');
     if (open) open.hidden = true;
@@ -2957,6 +3040,15 @@
         return { n: frameStats.n, avg: frameStats.n ? frameStats.sum / frameStats.n : 0, max: frameStats.max };
       },
       resetFrame: function () { frameStats = { n: 0, sum: 0, max: 0 }; },
+      atlas: function () { return atlas; },
+      setCast: function (patch) {
+        Object.keys(patch || {}).forEach(function (k) {
+          if (CAST[k] && !Array.isArray(CAST[k])) Object.assign(CAST[k], patch[k]);
+          else CAST[k] = patch[k];
+        });
+        resolveCast();
+        return JSON.parse(JSON.stringify(cast));
+      },
       feed: function (raw) {
         var data = window.OC2D_DATA.normalizeOverview(raw);
         if (data) onOverview(data);

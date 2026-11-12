@@ -356,6 +356,38 @@ console.log('\n[5] overflow: 6 deleghe vive e 6 sub-agenti');
   await ctx.close();
 }
 
+// =====================================================================
+console.log('\n[6] casting: personaggio assente e personaggio con solo stand/walk');
+{
+  const { ctx, page, problems } = await openPage({ viewport: { width: 1440, height: 900 } }, 'mock=1');
+  const warns = [];
+  page.on('console', (m) => { if (m.type() === 'warning') warns.push(m.text()); });
+  await waitState(page, () => document.querySelectorAll('.fighter-btn[data-kind="claude"]').length === 3);
+  const cast = await page.evaluate(() => {
+    const a = window.__oc2d.atlas();
+    a.chars.walker = { stand: { face: 'F', frames: ['vegeta:0'] }, walk: { face: 'F', frames: ['vegeta:0', 'vegeta:1'] } };
+    window.__oc2d.setCast({ role: { build: ['ghost-missing', 'walker'], plan: ['ghost-missing'] }, kid: { other: ['walker'] } });
+    return window.__oc2d.setCast({});
+  });
+  check('personaggio assente scartato dal pool', !cast.role.build.includes('ghost-missing') && cast.role.build.includes('walker'), cast.role);
+  check('pool svuotato: ripiego su un personaggio valido', cast.role.plan.length === 1 && cast.role.plan[0] !== 'ghost-missing', cast.role.plan);
+  check('un solo console.warn per il nome assente', warns.filter((w) => w.includes('ghost-missing')).length === 1, warns);
+  await page.evaluate(() => {
+    const now = Date.now();
+    const sessions = ['working', 'active', 'stuck', 'failed', 'idle', 'suspended'].map((status, i) => ({
+      id: 'w' + i, title: 'prova-' + i, status, agent: 'build', timeCreated: now + i, timeUpdated: now,
+      lastActivity: { type: 'tool', tool: ['bash', 'edit', 'read', 'task', 'webfetch', 'grep'][i], summary: '' },
+    }));
+    window.__oc2d.feed({ sessions, service: { alive: true } });
+  });
+  await sleep(1200);
+  const s = await st(page);
+  const ws = s.fighters.filter((f) => f.id.startsWith('w'));
+  check('sessioni con personaggio solo stand/walk in ogni stato', ws.length === 6 && ws.every((f) => f.char === 'walker' && f.placed), ws);
+  check('nessun errore (casting)', problems.length === 0, problems);
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 console.log(`\nRisultato: ${passed} asserzioni ok, ${failures.length} fallite. Screenshot in ${SHOTS}`);

@@ -43,6 +43,19 @@ When you delegate coding work to opencode (from a terminal, from scripts or from
 
 `/2d.html` is an alternative, animated view of the same data: every session is a character on a map. Claude Code sessions appear as characters with their sub-agents, linked to the opencode sessions they delegated to. Append `?mock=1` for a demo mode on fake data, with no opencode or Claude Code needed.
 
+### Adding characters and backdrops
+
+Characters and backdrops are data. No engine change is needed.
+
+1. Add the frames to `public/2d/sprites.png`. Crop each frame tight to the figure and keep it within 64x64 px. The bottom edge of a frame is the feet baseline and its horizontal centre is the character's position, so keep the feet on the bottom row of every frame.
+2. Describe the frames in `public/2d/atlas.json`. A frame is `frames["<name>:<n>"] = [x, y, width, height]` in sheet pixels. An animation is `chars.<name>.<anim> = { "face": "F", "frames": ["<name>:0", "<name>:1"] }`. `face` is the direction the frames look: `F` front, `L` or `R` side (mirrored to match the walking direction), `B` back.
+3. Add the name to a role pool in the `CAST` table at the top of the casting section in `public/2d.js`. A pool with several names picks one per session by hash of its id. Optionally add a display name to `CHAR_LABEL`.
+4. Open `/2d.html?mock=1` and check every state.
+
+Animation names. Required: `stand` (also the portrait and the click target). Optional: `walk`, `walkSide`, `back`, `sit`, `charge`, `blast`, `melee`, `hurt`, `ko`, `koFlash`, `kameCharge`, `kameFire`, `power`, `portrait`. A missing animation falls back to a close one and finally to `stand`, so a character with only `stand` and `walk` works in every state. A name in `CAST` that is missing from the atlas is skipped with a console warning.
+
+Backdrops work the same way: add the PNG under `public/2d/bg/`, register it as `bg.<key> = { "src": "bg/<file>.png", "w": 239, "h": 160 }` in `atlas.json`, and list the key in the `bgs` of a zone in the `ZONES` table.
+
 ## Quick start
 
 Requirements: Node.js 22.5 or newer (it uses the built-in `node:sqlite`) and opencode v2 on the same machine.
